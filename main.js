@@ -43,6 +43,7 @@ ipcMain.handle('app:version', () => 15);
 // SB_TEST=1: a side-by-side test copy — its own data, and it never installs itself or touches shortcuts
 const TEST_COPY = process.env.SB_TEST === '1';
 if (TEST_COPY) app.setPath('userData', path.join(app.getPath('appData'), 'Silver Bullet (test copy)'));
+else app.setPath('userData', path.join(app.getPath('appData'), 'preview')); // one data folder whichever way it starts (Start.bat, ready-made download, shortcut)
 if (process.platform === 'win32') app.setAppUserModelId('SilverBullet'); // reminders and battery alerts show as Windows notifications
 
 function createWindow() {
@@ -128,7 +129,11 @@ async function installApp() {
     fs.writeFileSync(path.join(appDir, 'package.json'), JSON.stringify({ name: 'preview', productName: 'preview', version: '1.0.0', main: 'boot.js' }, null, 1));
     for (const f of ['boot.js']) fs.copyFileSync(path.join(__dirname, f), path.join(appDir, f));
     fs.copyFileSync(path.join(__dirname, 'assets', 'icon.ico'), path.join(appDir, 'icon.ico'));
-    const src = SRC_DIR.replace(/[\\/]+$/, '');
+    let src = SRC_DIR.replace(/[\\/]+$/, '');
+    if (app.isPackaged && !process.env.SB_INSTALLED) { // the ready-made download: keep its code with the app, so the downloaded folder can be deleted
+      src = path.join(INSTALL_DIR, 'src');
+      require('original-fs').cpSync(__dirname, src, { recursive: true, force: true });
+    }
     let cur = {}; try { cur = JSON.parse(fs.readFileSync(path.join(appDir, 'boot.json'), 'utf8')); } catch {}
     if (cur.src !== src) fs.writeFileSync(path.join(appDir, 'boot.json'), JSON.stringify({ src }, null, 1));
     writeShortcuts();
