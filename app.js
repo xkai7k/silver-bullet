@@ -79,6 +79,13 @@ const pv = {
 const inElectron = !!window.api;
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+// what a page's card says under its name
+function pageCount(p, long) {
+  if (p.type === 'gallery') { const n = window.Shots?.total?.(); return n ? `${n} لقطة` : 'صورك ومقاطعك'; }
+  if (p.type === 'calendar') { const n = (data.events || []).length; return n ? `${n} موعد` : (long ? 'هجري وميلادي، مع تذكير وعد تنازلي' : 'ما فيه مواعيد'); }
+  if (p.type === 'mods') { const n = (data.modsLog || []).length; return n ? `${n} مود ركّبته` : 'اسحب المود هنا'; }
+  return p.items.length ? `${p.items.length} عنصر` : 'فاضية';
+}
 const isWeb = (t) => /^https?:\/\//i.test(t || '');
 const isDrivePath = (t) => /^[a-zA-Z]:[\\/]/.test(t || '') || (t || '').startsWith('\\\\');
 const toImageUrl = (p) => !p ? '' : isDrivePath(p) ? 'file:///' + encodeURI(p.replace(/\\/g, '/')) : p;
@@ -314,7 +321,7 @@ function render() {
   $('#emuBtn').hidden = !(p && p.type === 'emu');
   $('#addBtn').hidden = true; // adding happens from the + tile / card
   if (p) $('#title').innerHTML = `${pageIcon(p, 'title-ico')}<span>${esc(p.name)}</span>`; else $('#title').textContent = greeting();
-  $('#subtitle').textContent = p ? (p.type === 'gallery' ? 'لقطاتك من كل الألعاب' : `${p.items.length} عنصر`) : [new Date().toLocaleDateString('ar-SA-u-ca-gregory', { weekday: 'long', day: 'numeric', month: 'long' }), new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'long' }), window.nextEventLine?.() || ''].filter(Boolean).join(' · ');
+  $('#subtitle').textContent = p ? pageCount(p, true) : [new Date().toLocaleDateString('ar-SA-u-ca-gregory', { weekday: 'long', day: 'numeric', month: 'long' }), new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'long' }), window.nextEventLine?.() || ''].filter(Boolean).join(' · ');
   setBackground('');
   renderDrawer();
   window.SB?.drawTop();
@@ -353,7 +360,7 @@ function renderHome() {
           <div class="art">${pageCardBg(p)}</div>
           <div class="shade"></div>
           <div class="icon">${pageIcon(p)}</div>
-          <div class="meta"><div class="name">${esc(p.name)}</div><div class="count">${p.type === 'calendar' ? (data.events || []).length + ' موعد' : p.items.length + ' عنصر'}</div></div>
+          <div class="meta"><div class="name">${esc(p.name)}</div><div class="count">${pageCount(p)}</div></div>
         </div>`).join('')}
       <div class="shelf-card add" id="addPageCard" title="صفحة جديدة"><span>+</span></div>
     </div></div>
@@ -511,6 +518,7 @@ function tileHtml(i, p = page()) {
 function renderPage() {
   const p = page();
   if (p.type === 'gallery') { window.Shots ? Shots.renderGallery(view) : (view.innerHTML = ''); return; }
+  if (p.type === 'mods') { renderMods(p); return; }
   if (p.type === 'calendar') { $('#subtitle').textContent = 'هجري وميلادي، مع تذكير وعد تنازلي'; window.Calendar ? Calendar.render() : (view.innerHTML = ''); return; }
   if (p.id === 'music') {
     view.innerHTML = `<div id="spDockArea"><div class="spd-msg"><svg viewBox="0 0 24 24" width="64" height="64"><circle cx="12" cy="12" r="11" fill="#1ed760"/><path d="M6.5 9.3c3.6-1.1 7.6-.8 10.8 1M7.2 12.3c3-.8 6.2-.5 8.8.9M7.8 15.1c2.4-.6 4.8-.4 6.9.7" stroke="#000" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg><b>جاري فتح سبوتيفاي…</b><small>لو ما طلع خلال ثواني، تأكد إن برنامج سبوتيفاي مثبت</small></div></div>`;
@@ -1423,6 +1431,7 @@ function openWeb(item) {
   const url = item.lastUrl || item.target;
   const resumeAt = item.lastTime && item.lastUrl === url ? item.lastTime : 0;
   $('#wvTitle').textContent = item.name;
+  $('#wvUrl').value = url;
   const note = $('#wvNote');
   note.hidden = !resumeAt;
   note.textContent = resumeAt ? `وقفت عند ${fmtClock(resumeAt)}` : '';
@@ -1448,6 +1457,7 @@ function openWeb(item) {
   // page/episode starts the minute counter over
   const samePage = (a, b) => { try { const x = new URL(a), y = new URL(b); const keep = (u) => [...u.searchParams].filter(([k]) => !/^(t|time|start|s|ts|pos|position|utm_.*|ref|si|feature|pp|list|index|autoplay)$/i.test(k)).sort().join('&'); return x.host === y.host && x.pathname.replace(/\/$/, '') === y.pathname.replace(/\/$/, '') && keep(x) === keep(y); } catch { return a === b; } };
   const remember = (e) => {
+    if (e.url && !e.url.startsWith('about:')) $('#wvUrl').value = e.url;
     if (!e.url || e.url.startsWith('about:')) return;
     if (!item.lastUrl || !samePage(e.url, item.lastUrl)) { item.lastTime = 0; item.lastDuration = 0; }
     item.lastUrl = e.url;
@@ -1719,6 +1729,7 @@ window.addEventListener('drop', async (e) => {
   e.preventDefault();
   hideDrop();
   if (!inElectron) return toast('السحب والإفلات يشتغل داخل البرنامج');
+  if (currentPageId && page()?.type === 'mods') { modsDrop([...e.dataTransfer.files].map((f) => pv.pathForFile(f)).filter(Boolean)); return; } // the Mods page: install them on a game
   let target = null;
   let n = 0, busyN = 0, dupN = 0; // added now / downloading or being prepared / already there
   for (const f of e.dataTransfer.files) {
@@ -1733,7 +1744,7 @@ window.addEventListener('drop', async (e) => {
     if (rom?.pending) { toast(`⏳ جاري تجهيز ${rom.name}… تنضاف للألعاب لحالها لما تخلص`); busyN++; continue; }
     if (rom) { if (addRomGame(rom, true)) n++; else { dupN++; toast(`${cleanRomName(rom.raw || '')} موجودة من قبل في مكتبتك`); } continue; }
     const dup = data.pages.find((pg) => pg.items.some((i) => String(i.target).toLowerCase() === p.toLowerCase()));
-    pv.log(`drop: ${p} -> ${target.id}${dup ? ' (already in ' + dup.id + ')' : ''}`);
+    pv.log(`drop: ${p} -> ${dropTarget(p)?.id}${dup ? ' (already in ' + dup.id + ')' : ''}`);
     if (dup) { toast(`${info.name} موجود من قبل في ${dup.name}`); dupN++; continue; }
     if (data.removed) delete data.removed['t:' + p.toLowerCase()];
     target = dropTarget(p);
@@ -2684,4 +2695,63 @@ function renderStats(seg) {
     <p class="hint">وقت ستيم ينحسب من ستيم نفسه، والباقي من البرنامج لما تفتح اللعبة منه.</p>`;
   view.querySelectorAll('[data-gt]').forEach((b) => b.onclick = () => { gamesTab = b.dataset.gt; renderPage(); });
   view.querySelectorAll('.st-row').forEach((r) => r.onclick = () => { const f = findItem(r.dataset.item); if (f) window.openDetail?.(f.item); });
+}
+
+// ---------- the watch screen: its link (copy it, or pin it as its own tile) ----------
+$('#wvCopy').onclick = () => { const u = $('#wvUrl').value; if (!u) return; navigator.clipboard.writeText(u).then(() => toast('🔗 نسخت الرابط')).catch(() => { $('#wvUrl').select(); document.execCommand('copy'); toast('🔗 نسخت الرابط'); }); };
+$('#wvUrl').onclick = () => $('#wvUrl').select();
+$('#wvPin').onclick = () => {
+  const u = $('#wvUrl').value; if (!u) return;
+  const w = page('watch') || data.pages.find((p) => p.type === 'watch'); if (!w) return;
+  if (w.items.some((i) => i.target === u)) { toast('📌 مثبّت من قبل'); return; }
+  const t = ($('#wvTitle').textContent.split(' — ').pop() || '').trim();
+  w.items.push({ id: uid(), name: (t || new URL(u).hostname.replace(/^www\./, '')).slice(0, 60), target: u, categories: [], added: Date.now() });
+  save(); toast(`📌 ثبّته في المشاهدة: ${t || u}`);
+};
+
+// ---------- Mods & translations page: drop the file, pick the game, done ----------
+function renderMods(p) {
+  const log = (data.modsLog || []).slice().reverse();
+  const when = (t) => new Date(t).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short' });
+  view.innerHTML = `
+    <div class="mods-drop" id="modsDrop">
+      <div class="md-ic">🧩</div>
+      <h2>اسحب ملف المود أو التعريب هنا</h2>
+      <p>zip · rar · 7z · مجلد · pnach · أو تحديث سويتش (nsp)</p>
+      <button class="btn primary" id="modsPick">أو اختر الملف…</button>
+    </div>
+    <div class="mods-how"><div><b>١</b> اسحب الملف</div><div><b>٢</b> اختر اللعبة</div><div><b>٣</b> أركّبه في المكان الصح لحالي</div></div>
+    <p class="hint">يعرف وين يحطه: سويتش (Ryujinx و Lichii)، Wii U (Cemu)، GameCube/Wii (Dolphin)، PS2 (PCSX2)، PSP، وألعاب الكمبيوتر (ينسخه لمجلد اللعبة مع نسخة احتياطية). تقدر بعد تسحب المود على صفحة اللعبة نفسها.</p>
+    <h3 class="md-h">اللي ركّبته</h3>
+    <div class="md-list">${log.length ? log.slice(0, 40).map((m) => `<div class="md-row"><span>${m.ok ? '✓' : '✗'}</span><b dir="auto">${esc(m.mod)}</b><small>على ${esc(m.game)} · ${when(m.t)}</small><em>${esc(m.msg || '')}</em></div>`).join('') : '<div class="empty small">لسا ما ركّبت شي.</div>'}</div>
+    <div class="md-foot"><button class="btn ghost sm" id="modsFolder">📂 مجلد المودات</button></div>`;
+  $('#modsPick').onclick = async () => { const f = await pv.pickFile('file'); if (f) modsDrop([f]); };
+  $('#modsFolder').onclick = () => paths.mods && pv.launch(paths.mods);
+}
+function modsDrop(files) {
+  if (!files.length) return;
+  const games = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store).sort((a, b) => (b.lastOpened || b.lastPlayed || 0) - (a.lastOpened || a.lastPlayed || 0));
+  const d = document.createElement('dialog'); d.className = 'mods-pick';
+  d.innerHTML = `<h2>🧩 على أي لعبة؟</h2><p class="hint">${files.map((f) => esc(f.split(/[\\/]/).pop())).join('، ')}</p>
+    <input id="mpQ" placeholder="دوّر على اللعبة…" autocomplete="off">
+    <div class="mp-list"></div>
+    <div class="actions"><button class="btn ghost" data-x>إلغاء</button></div>`;
+  document.body.appendChild(d); d.addEventListener('close', () => d.remove()); d.showModal();
+  const draw = () => {
+    const q = searchKey(d.querySelector('#mpQ').value);
+    d.querySelector('.mp-list').innerHTML = games.filter((g) => !q || searchKey(g.name).includes(q)).slice(0, 60).map((g) => `<button class="mp-g" data-id="${g.id}">${g.image && !g.noArt ? `<img src="${esc(toImageUrl(g.image))}" alt="" onerror="this.remove()">` : '<span>🎮</span>'}<b dir="auto">${esc(g.name)}</b><small>${esc(g.platformLabel || g.console || '')}</small></button>`).join('') || '<div class="empty small">ما لقيت لعبة بهالاسم</div>';
+    d.querySelectorAll('.mp-g').forEach((b) => b.onclick = () => { const g = findItem(b.dataset.id)?.item; d.close(); if (g) installMods(g, files); });
+  };
+  d.querySelector('#mpQ').oninput = draw; d.querySelector('[data-x]').onclick = () => d.close();
+  draw(); d.querySelector('#mpQ').focus();
+}
+async function installMods(g, files) {
+  for (const src of files) {
+    toast(`🧩 أركّب ${src.split(/[\\/]/).pop()} على ${g.name}…`);
+    const r = await pv.modsInstall({ rom: g.rom || '', console: g.console || g.platform || '', target: g.target || '', name: g.name }, src).catch((e) => ({ ok: false, msg: e.message }));
+    (data.modsLog ||= []).push({ t: Date.now(), mod: src.split(/[\\/]/).pop(), game: g.name, ok: !!r?.ok, msg: r?.msg || '' });
+    save();
+    toast(r?.ok ? `✓ ${r.msg || 'تركّب'}` : `✗ ${r?.msg || 'ما قدرت أركّبه'}`);
+  }
+  if (currentPageId && page()?.type === 'mods') renderPage();
 }

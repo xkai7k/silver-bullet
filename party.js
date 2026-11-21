@@ -98,17 +98,38 @@
 
   // ---- requests: they ask, you decide ----
   const WHAT = { toggle: '⏯ يطلب إيقاف / تشغيل', back: '⏪ يطلب ترجّع شوي' };
+  // A big box in the middle of the screen (it shows even over a full-screen video): you say yes or no
+  let askDlg = null; const askQ = [];
   function ask(g, what) {
     if (!WHAT[what]) return;
-    const box = $('#partyReqs');
-    const card = document.createElement('div');
-    card.className = 'party-req';
-    card.innerHTML = `<b>${esc(g.name)}</b><span>${WHAT[what]}</span><button class="btn small ok">سوّها</button><button class="btn ghost small no">تجاهل</button>`;
-    const bye = () => { card.classList.add('out'); setTimeout(() => card.remove(), 250); };
-    card.querySelector('.ok').onclick = async () => { bye(); const id = wcId(); if (id) await api.videoCtl?.(id, what, 10); setTimeout(pushState, 300); };
-    card.querySelector('.no').onclick = bye;
-    box.appendChild(card);
-    setTimeout(bye, 20000);
+    askQ.push({ g, what, at: Date.now() });
+    try { const c = new AudioContext(), o = c.createOscillator(), v = c.createGain(); o.frequency.value = 880; v.gain.value = 0.08; o.connect(v).connect(c.destination); o.start(); o.frequency.setValueAtTime(1175, c.currentTime + 0.12); o.stop(c.currentTime + 0.28); } catch {}
+    if (!document.hasFocus()) api.notify?.(`${g.name} ${WHAT[what]}`);
+    drawAsk();
+  }
+  function drawAsk() {
+    while (askQ.length && Date.now() - askQ[0].at > 30000) askQ.shift();
+    if (!askQ.length) { try { askDlg?.close(); } catch {} return; }
+    if (!askDlg) {
+      askDlg = document.createElement('dialog'); askDlg.className = 'party-ask';
+      askDlg.addEventListener('cancel', (e) => { e.preventDefault(); answer(false); });
+      document.body.appendChild(askDlg);
+    }
+    const { g, what } = askQ[0];
+    askDlg.innerHTML = `<div class="pa-ic">${what === 'back' ? '⏪' : '⏯'}</div><h2><b>${esc(g.name)}</b> ${WHAT[what].replace(/^\S+\s/, '')}</h2>
+      ${askQ.length > 1 ? `<p class="pa-more">+${askQ.length - 1} طلب ثاني</p>` : ''}
+      <div class="pa-btns"><button class="btn primary pa-yes">✓ سوّها</button><button class="btn ghost pa-no">✕ لا</button></div><p class="pa-hint">Enter = سوّها · Esc = لا</p>`;
+    askDlg.querySelector('.pa-yes').onclick = () => answer(true);
+    askDlg.querySelector('.pa-no').onclick = () => answer(false);
+    if (!askDlg.open) askDlg.showModal(); // the top layer: above a full-screen webview too
+    askDlg.querySelector('.pa-yes').focus();
+    clearTimeout(drawAsk.t); drawAsk.t = setTimeout(drawAsk, 30500);
+  }
+  async function answer(yes) {
+    const q = askQ.shift(); if (!q) return;
+    if (yes) { const id = wcId(); if (id) await api.videoCtl?.(id, q.what, 10); setTimeout(pushState, 300); }
+    try { q.g.dc?.send(JSON.stringify({ t: 'answer', what: q.what, yes })); } catch {}
+    drawAsk();
   }
 
   // ---- your side: the panel and the "watching with you" strip ----

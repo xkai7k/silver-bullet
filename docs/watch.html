@@ -133,7 +133,7 @@
       if (pc.connectionState === 'failed') lost('انقطع الاتصال. يمكن الشبكة تمنع الاتصال المباشر.');
     };
     dc = pc.createDataChannel('sb');
-    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === 'state') onState(m); if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } };
+    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === 'state') onState(m); if (m.t === 'answer') { $('#sent').textContent = m.yes ? '✓ وافق على طلبك' : '✕ ما وافق هالمرة'; setTimeout(() => { $('#sent').textContent = ''; }, 4000); } if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } };
     dc.onclose = () => { if (!ended) lost('انقطع الاتصال…'); };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -205,8 +205,7 @@
     if (Date.now() - lastReq < 3000) { $('#sent').textContent = 'انتظر شوي قبل طلب ثاني'; return; }
     lastReq = Date.now();
     dc.send(JSON.stringify({ t: 'req', what }));
-    $('#sent').textContent = `✓ وصله طلبك: ${label}. هو يقرر.`;
-    setTimeout(() => { $('#sent').textContent = ''; }, 4000);
+    $('#sent').textContent = `⏳ وصله طلبك: ${label}. ننتظر رده…`;
   }
   $('#rToggle').onclick = () => req('toggle', 'إيقاف / تشغيل');
   $('#rBack').onclick = () => req('back', 'يرجّع شوي');

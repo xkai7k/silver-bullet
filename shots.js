@@ -111,6 +111,7 @@
     close,
     navigate(a) { if (a === 'back') close(); else if (a === 'left') { idx = (idx + 1) % list.length; show(); } else if (a === 'right') { idx = (idx - 1 + list.length) % list.length; show(); } },
     count: (id) => (shots[id] || []).length,
+    total: () => Object.values(shots).reduce((a, l) => a + l.length, 0),
     // Strip of thumbnails inside a game's detail screen
     async renderInto(item, box) {
       if (!box) return;
