@@ -570,11 +570,12 @@ function renderPage() {
         ${p.items.length > 8 ? `<label class="pg-search"><span>🔍</span><input id="pgSearch" type="search" autocomplete="off" placeholder="${p.type === 'games' ? 'دوّر على لعبة…' : 'دوّر…'}  (Ctrl+F)" value="${esc(pageQuery.id === p.id ? pageQuery.q : '')}"><b id="pgCount"></b></label>` : ''}
         ${nNew ? `<button class="btn ghost sm new-clear" id="clearNew">✓ شيل علامة "جديد" عن الكل (${nNew})</button>` : ''}
       </div>` : '';
-    const seg = p.type === 'games' ? `<div class="seg pg-seg"><button data-gt="games" class="${gamesTab === 'games' ? 'on' : ''}">🎮 الألعاب</button><button data-gt="tor" class="${gamesTab === 'tor' ? 'on' : ''}">🧲 التورنت <small>${(data.torLib || []).filter((t) => t.state !== 'done').length || ''}</small></button><button data-gt="space" class="${gamesTab === 'space' ? 'on' : ''}">💾 المساحة</button></div>` : '';
+    const seg = p.type === 'games' ? `<div class="seg pg-seg"><button data-gt="games" class="${gamesTab === 'games' ? 'on' : ''}">🎮 الألعاب</button><button data-gt="tor" class="${gamesTab === 'tor' ? 'on' : ''}">🧲 التورنت <small>${(data.torLib || []).filter((t) => t.state !== 'done').length || ''}</small></button><button data-gt="space" class="${gamesTab === 'space' ? 'on' : ''}">💾 المساحة</button><button data-gt="stats" class="${gamesTab === 'stats' ? 'on' : ''}">📊 وقتي</button></div>` : '';
     view.innerHTML = seg + chips + tools + body + (p.items.length ? '' : `<div class="empty">${emptyMsg}</div>`) + '<div class="empty small" id="noHits" hidden>ما لقيت شي بهالاسم</div>';
     view.querySelectorAll('[data-gt]').forEach((b) => b.onclick = () => { gamesTab = b.dataset.gt; renderPage(); });
     if (p.type === 'games' && gamesTab === 'tor') { renderTorLib(seg); return; }
     if (p.type === 'games' && gamesTab === 'space') { renderSpace(seg, p); return; }
+    if (p.type === 'games' && gamesTab === 'stats') { renderStats(seg); return; }
   }
 
   wireImages(view);
@@ -2407,6 +2408,7 @@ window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason
     const f = findItem(itemId);
     if (!f) return;
     f.item.playtime = (f.item.playtime || 0) + secs;
+    if (secs >= 30) { f.item.lastPlayed = Date.now(); (data.playLog ||= []).push({ id: f.item.id, t: Date.now(), s: secs }); if (data.playLog.length > 3000) data.playLog.splice(0, data.playLog.length - 3000); }
     save();
     if (currentPageId === f.page.id) renderPage();
     if (secs >= 60) toast(`لعبت ${f.item.name} ${fmtTime(Math.round(secs / 60))}`);
@@ -2663,3 +2665,23 @@ pv.torShareGet().then((d) => { torShareDir = d || ''; }).catch(() => {});
 pv.onTorShare((f) => addToTorLib(f, false, true));
 
 $('#setLang').onchange = () => window.I18n?.set($('#setLang').value);
+
+// ---------- "📊 وقتي": how much you play, and what ----------
+function renderStats(seg) {
+  const games = allItems().filter((i) => isGameItem(i) && playMinutes(i) > 0).sort((a, b) => playMinutes(b) - playMinutes(a));
+  const total = games.reduce((a, i) => a + playMinutes(i), 0);
+  const log = data.playLog || [];
+  const since = (days) => Math.round(log.filter((x) => x.t > Date.now() - days * 864e5).reduce((a, x) => a + x.s, 0) / 60);
+  const week = since(7), month = since(30);
+  // last 14 days, minutes per day
+  const days = Array.from({ length: 14 }, (_, k) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (13 - k)); const a = d.getTime(), b = a + 864e5; return { d, m: Math.round(log.filter((x) => x.t >= a && x.t < b).reduce((s, x) => s + x.s, 0) / 60) }; });
+  const maxD = Math.max(1, ...days.map((x) => x.m)), max = Math.max(1, ...games.map(playMinutes));
+  const when = (t) => !t ? '' : new Date(t).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short' });
+  view.innerHTML = seg + `
+    <div class="st-cards"><div><b>${fmtTime(total)}</b><small>كل وقتك</small></div><div><b>${fmtTime(week)}</b><small>آخر ٧ أيام</small></div><div><b>${fmtTime(month)}</b><small>آخر ٣٠ يوم</small></div><div><b>${games.length}</b><small>لعبة لعبتها</small></div></div>
+    <div class="st-days">${days.map((x) => `<div title="${when(x.d)}: ${fmtTime(x.m)}"><i style="height:${Math.round((x.m / maxD) * 100)}%"></i><small>${x.d.getDate()}</small></div>`).join('')}</div>
+    <div class="st-list">${games.slice(0, 60).map((i, n) => `<div class="st-row" data-item="${i.id}"><span class="st-n">${n + 1}</span><b dir="auto">${esc(i.name)}</b><span class="st-bar"><i style="width:${Math.max(2, Math.round((playMinutes(i) / max) * 100))}%"></i></span><span class="st-t">${fmtTime(playMinutes(i))}</span><small>${i.lastPlayed ? 'آخر مرة ' + when(i.lastPlayed) : ''}</small></div>`).join('') || '<div class="empty">لسا ما لعبت شي من هنا. وقت اللعب ينحسب لحاله لما تفتح اللعبة من البرنامج.</div>'}</div>
+    <p class="hint">وقت ستيم ينحسب من ستيم نفسه، والباقي من البرنامج لما تفتح اللعبة منه.</p>`;
+  view.querySelectorAll('[data-gt]').forEach((b) => b.onclick = () => { gamesTab = b.dataset.gt; renderPage(); });
+  view.querySelectorAll('.st-row').forEach((r) => r.onclick = () => { const f = findItem(r.dataset.item); if (f) window.openDetail?.(f.item); });
+}

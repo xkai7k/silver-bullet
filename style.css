@@ -1891,3 +1891,17 @@ body.no-blur * { backdrop-filter: none !important; -webkit-backdrop-filter: none
 .tor-share { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; padding: 10px 14px; border-radius: 14px; background: var(--card); font-size: 14px; }
 .tor-share span { flex: 1; min-width: 220px; }
 body.lang-en .empty, body.lang-en .hint { direction: ltr; text-align: left; }
+
+/* play-time stats */
+.st-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 10px 0 16px; }
+.st-cards div { padding: 16px; border-radius: 16px; background: var(--card); display: flex; flex-direction: column; gap: 4px; }
+.st-cards b { font-size: 24px; } .st-cards small { opacity: .7; }
+.st-days { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding: 12px; border-radius: 16px; background: var(--card); margin-bottom: 16px; }
+.st-days div { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
+.st-days i { width: 100%; min-height: 2px; border-radius: 6px 6px 2px 2px; background: var(--accent); }
+.st-days small { font-size: 11px; opacity: .6; }
+.st-list { display: flex; flex-direction: column; gap: 6px; }
+.st-row { display: grid; grid-template-columns: 28px minmax(140px, 1.2fr) 2fr 80px 110px; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px; background: var(--card); cursor: pointer; }
+.st-row:hover { background: var(--card-hover); } .st-n { opacity: .5; font-weight: 800; } .st-row b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-bar { height: 8px; border-radius: 8px; background: rgba(127,127,127,.2); overflow: hidden; } .st-bar i { display: block; height: 100%; background: var(--accent); border-radius: 8px; }
+.st-t { font-weight: 800; text-align: end; } .st-row small { opacity: .6; font-size: 12px; }
