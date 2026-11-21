@@ -67,7 +67,11 @@ function createWindow() {
   win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     if (level >= 2) log('console:', message, `(${String(sourceId).split('/').pop()}:${line})`);
   });
-  win.webContents.on('render-process-gone', (_e, d) => log('renderer gone:', d.reason));
+  win.webContents.on('render-process-gone', (_e, d) => { log('renderer gone:', d.reason); if (d.reason !== 'clean-exit') setTimeout(() => { try { win.webContents.reload(); } catch {} }, 1500); }); // crashed: come back by itself
+  // stuck: say so in the log, and if it stays stuck for 20 s, reload the screen (your data is saved)
+  let hang = null;
+  win.on('unresponsive', () => { log('window not responding'); clearTimeout(hang); hang = setTimeout(() => { log('still stuck, reloading'); try { win.webContents.forcefullyCrashRenderer(); } catch {} }, 20000); });
+  win.on('responsive', () => { if (hang) log('window responding again'); clearTimeout(hang); hang = null; });
   win.webContents.on('did-fail-load', (_e, code, desc) => log('load failed:', code, desc));
   win.loadFile(path.join(__dirname, 'index.html'));
   win.on('close', (ev) => { // say goodbye first, then really quit
@@ -839,6 +843,41 @@ async function webCover(name) {
   return pick ? { image: pick.murl, hero: '', matched: pick.t || name } : null;
 }
 
+// A series or movie pinned from a watch site: its poster (TVmaze for shows, iTunes for movies, both free, no key)
+ipcMain.handle('cover:show', async (_e, q) => {
+  q = String(q || '').trim(); if (q.length < 2) return null;
+  const H = { headers: { 'User-Agent': 'SilverBullet/1.0' } };
+  const flat = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9؀-ۿ]/g, '');
+  try {
+    const r = await net.fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(q)}`, H);
+    const list = r.ok ? await r.json() : [];
+    const hit = list.find((x) => flat(x.show?.name) === flat(q)) || (list[0]?.score > 0.6 ? list[0] : null);
+    const img = hit?.show?.image?.original || hit?.show?.image?.medium;
+    if (img) return { image: img, name: hit.show.name, genres: hit.show.genres || [], kind: 'show' };
+  } catch (e) { log('show cover tvmaze', q, e.message); }
+  try {
+    const r = await net.fetch(`https://itunes.apple.com/search?media=movie&entity=movie&limit=5&term=${encodeURIComponent(q)}`, H);
+    const j = r.ok ? await r.json() : {};
+    const hit = (j.results || []).find((x) => flat(x.trackName) === flat(q)) || (j.results || [])[0];
+    if (hit?.artworkUrl100) return { image: hit.artworkUrl100.replace(/100x100bb/, '600x900bb'), name: hit.trackName, genres: [hit.primaryGenreName].filter(Boolean), kind: 'movie' };
+    else log('show cover itunes', q, r.status, (j.results || []).length);
+  } catch (e) { log('show cover itunes', q, e.message); }
+  // last: the film's or show's Wikipedia picture (its poster)
+  for (const t of [`${q} (film)`, `${q} (TV series)`, q]) {
+    try {
+      const sum = await (await net.fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t.replace(/ /g, '_'))}?redirect=true`, H)).json();
+      if (!sum.title || sum.type === 'disambiguation' || !/film|movie|series|sitcom|drama|anime|show/i.test(sum.description || '')) continue;
+      let img = sum.originalimage?.source || sum.thumbnail?.source;
+      if (!img) { // posters are "non-free" files the summary leaves out: read the infobox picture
+        const wt = await (await net.fetch(`https://en.wikipedia.org/w/api.php?action=parse&format=json&prop=wikitext&section=0&redirects=1&page=${encodeURIComponent(sum.title)}`, H)).json().catch(() => ({}));
+        const m = /\|\s*image\s*=\s*(?:\[\[)?(?:File:|Image:)?([^|\]\n]+?\.(?:jpe?g|png|webp))/i.exec(wt.parse?.wikitext?.['*'] || '');
+        if (m) { const ii = await (await net.fetch(`https://en.wikipedia.org/w/api.php?action=query&format=json&prop=imageinfo&iiprop=url&titles=${encodeURIComponent('File:' + m[1].trim())}`, H)).json().catch(() => ({})); img = Object.values(ii.query?.pages || {})[0]?.imageinfo?.[0]?.url; }
+      }
+      if (img && !/\.svg/i.test(img)) return { image: img, name: sum.title.replace(/\s*\((film|TV series|\d{4} film)\)$/i, ''), genres: [], kind: /film|movie/i.test(sum.description) ? 'movie' : 'show' };
+    } catch {}
+  }
+  return null;
+});
 ipcMain.handle('cover:check', async (_e, url) => {
   try { const r = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(6000) }); return r.ok; } catch { return false; }
 });

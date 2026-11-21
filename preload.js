@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
   savesOpen: () => ipcRenderer.invoke('saves:open'),
   torlibSave: (file) => ipcRenderer.invoke('torlib:save', file),
   findCover: (name, noSteam) => ipcRenderer.invoke('cover:find', name, !!noSteam),
+  showCover: (q) => ipcRenderer.invoke('cover:show', q),
   webMeta: (url) => ipcRenderer.invoke('web:meta', url),
   steamApp: (id) => ipcRenderer.invoke('cover:steamApp', id),
   consoleArt: (system, name) => ipcRenderer.invoke('art:console', system, name),

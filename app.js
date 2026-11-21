@@ -1473,6 +1473,10 @@ function openWeb(item) {
 
   let wcId = null, seeked = !resumeAt, waited = 0;
   wv.addEventListener('dom-ready', () => { try { wcId = wv.getWebContentsId(); } catch {} });
+  // the site's own full-screen button: the video takes the whole screen, no bar or line above it
+  let wasFull = false;
+  wv.addEventListener('enter-html-full-screen', () => { document.body.classList.add('wv-full'); wasFull = window.innerWidth >= screen.width && window.innerHeight >= screen.height; if (!wasFull) pv.fullscreen?.(true).catch(() => {}); });
+  wv.addEventListener('leave-html-full-screen', () => { document.body.classList.remove('wv-full'); if (!wasFull) pv.fullscreen?.(false).catch(() => {}); });
 
   // Sites change the address while a video plays (time stamps, tracking bits): only a different
   // page/episode starts the minute counter over
@@ -1532,6 +1536,7 @@ async function lastVideoState() { // one last look at the player before the tab 
   } catch {}
 }
 async function closeWeb() {
+  document.body.classList.remove('wv-full');
   await lastVideoState();
   clearInterval(videoPoll);
   window.Music?.resumeIfPaused();
@@ -2452,6 +2457,16 @@ window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason
     const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput').length;
     pv.log(`env: webgpu ${!!navigator.gpu}, mics ${mics}`);
   } catch {}
+  // what makes the screen stop answering clicks: anything that holds it for over a second gets written down
+  try {
+    let lastLT = 0;
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.duration > 1000 && Date.now() - lastLT > 5000) { lastLT = Date.now(); pv.log(`ui froze ${Math.round(e.duration)}ms (page ${currentPageId}, web ${!$('#webWrap').hidden}, dialogs ${document.querySelectorAll('dialog[open]').length})`); } }).observe({ type: 'longtask', buffered: false });
+  } catch {}
+  // clicks that land on nothing: an invisible leftover cover on top; take it away
+  document.addEventListener('pointerdown', (e) => {
+    const d = e.target.closest?.('dialog[open]');
+    if (d && !d.innerHTML.trim()) { d.close(); pv.log('closed an empty dialog that was blocking clicks'); }
+  }, true);
   pv.onDebugGoto((cmd) => {
     document.querySelectorAll('dialog[open]').forEach((d) => d.close());
     closeDrawer();
@@ -2629,7 +2644,8 @@ window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason
   if (!data.webIconsV2) { allItems().forEach((i) => { if (/youtube\.com\/s\/desktop/.test(i.icon || '')) delete i.icon; }); data.webIconsV2 = true; save(); }
   if (inElectron) allItems().filter((i) => isWeb(i.target) && !i.image && !i.icon).forEach((i) => webArt(i));
   firstRunSetup();
-  if (inElectron) setTimeout(async () => { await window.Voice?.preload(); window.Voice?.wakeSync(); }, 4000);
+  // the voice model is big: get it ready ahead only when Akai is called by name (or the PC has a graphics card for it)
+  if (inElectron) setTimeout(async () => { if (data.settings?.wakeOn || navigator.gpu) await window.Voice?.preload(); window.Voice?.wakeSync(); }, 8000);
   setInterval(() => { if (!currentPageId) $('#title').textContent = greeting(); }, 60000);
 })();
 
@@ -2721,14 +2737,46 @@ function renderStats(seg) {
 // ---------- the watch screen: its link (copy it, or pin it as its own tile) ----------
 $('#wvCopy').onclick = () => { const u = $('#wvUrl').value; if (!u) return; navigator.clipboard.writeText(u).then(() => toast('🔗 نسخت الرابط')).catch(() => { $('#wvUrl').select(); document.execCommand('copy'); toast('🔗 نسخت الرابط'); }); };
 $('#wvUrl').onclick = () => $('#wvUrl').select();
+// The show's name out of a watch-site page: "مشاهدة مسلسل Friends الموسم الاول الحلقة 1 مترجمة - توب سينما" → "Friends"
+function showNameOf(title, url) {
+  let slug = ''; try { slug = decodeURIComponent(new URL(url).pathname).replace(/[-_/+]+/g, ' '); } catch {}
+  const strip = (t) => String(t || '').split(/\s[-|–—•]\s|\s\|\s/)[0]
+    .replace(/\b(s\d{1,2}\s*e\d{1,3}|season\s*\d+|episode\s*\d+|ep\s*\d+|\d{3,4}p|web-?dl|bluray|hd|full|online|watch|series|movie|free|arabic|sub(bed|title)?s?)\b.*$/i, '')
+    .replace(/(مشاهدة|تحميل|مسلسل|فيلم|انمي|أنمي|برنامج|اون ?لاين|أون ?لاين|مترجم[ةه]?|مدبلج[ةه]?|كامل[ةه]?|بجودة\s*\S+|حصري[اً]*)/g, ' ')
+    .replace(/(الموسم|موسم|الحلقة|حلقة|الجزء|جزء|الحلقه)\s*.*$/, '')
+    .replace(/\s+/g, ' ').trim();
+  // an English name inside an Arabic title is the best search word ("Friends")
+  const latin = (t) => { const m = strip(t).match(/[A-Za-z][A-Za-z0-9'&:.!]*(?:\s+[A-Za-z0-9'&:.!]+)*/); return m && m[0].length >= 2 ? m[0].replace(/\s+(19|20)\d\d$/, '').trim() : ''; };
+  return latin(title) || strip(title).replace(/\s+(19|20)\d\d$/, '') || latin(slug) || strip(slug);
+}
+const GENRE_AR = { Comedy: 'كوميدي', Drama: 'دراما', Action: 'أكشن', Anime: 'أنمي', Horror: 'رعب', Crime: 'جريمة', 'Science-Fiction': 'خيال علمي', 'Sci-Fi & Fantasy': 'خيال علمي', 'Sci-Fi': 'خيال علمي', Romance: 'رومانسي', Thriller: 'إثارة', Adventure: 'مغامرة', Family: 'عائلي', Fantasy: 'فانتازيا', Mystery: 'غموض', Documentary: 'وثائقي', Kids: 'أطفال', Animation: 'أنمي', Sports: 'رياضة', War: 'حرب', History: 'تاريخ' };
+// give a pinned series its poster, real name and kind, like a tile you made by hand
+async function dressShow(it, title) {
+  if (!pv.showCover || it.showArt) return;
+  it.showArt = 1;
+  const q = showNameOf(title || it.name, it.target);
+  const r = q && await pv.showCover(q).catch(() => null);
+  pv.log(`show art: "${q}" → ${r ? r.name + ' ' + r.image : 'none'}`);
+  if (r) {
+    if (!it.image) it.image = r.image;
+    it.name = r.name;
+    const g = (r.genres || []).map((x) => GENRE_AR[x]).find(Boolean);
+    if (g && !(it.categories || []).length) it.categories = [g];
+  } else if (q) it.name = q.slice(0, 40);
+  save(); if (currentPageId === (page('watch') || {}).id) renderPage();
+}
 $('#wvPin').onclick = () => {
   const u = $('#wvUrl').value; if (!u) return;
   const w = page('watch') || data.pages.find((p) => p.type === 'watch'); if (!w) return;
   if (w.items.some((i) => i.target === u)) { toast('📌 مثبّت من قبل'); return; }
   const t = ($('#wvTitle').textContent.split(' — ').pop() || '').trim();
-  w.items.push({ id: uid(), name: (t || new URL(u).hostname.replace(/^www\./, '')).slice(0, 60), target: u, categories: [], added: Date.now() });
-  save(); toast(`📌 ثبّته في المشاهدة: ${t || u}`);
+  const it = { id: uid(), name: (showNameOf(t, u) || new URL(u).hostname.replace(/^www\./, '')).slice(0, 40), target: u, image: '', categories: [], added: Date.now() };
+  w.items.push(it);
+  save(); toast(`📌 ثبّته في المشاهدة: ${it.name}`);
+  dressShow(it, t);
 };
+// series pinned before this: fix their look once (poster + name)
+setTimeout(() => { for (const it of (page('watch')?.items || [])) if (it.added && !it.image && !it.showArt && /^https?:/.test(it.target || '') && new URL(it.target).pathname.length > 3) dressShow(it, it.name); }, 9000);
 
 // ---------- Mods & translations page: drop the file, pick the game, done ----------
 function renderMods(p) {

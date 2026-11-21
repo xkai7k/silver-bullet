@@ -40,7 +40,12 @@
           });
         } catch (e) { pv.log(`voice: webgpu failed, using cpu: ${e?.message || e}`); asr = null; }
       }
-      if (!asr) asr = await T.pipeline('automatic-speech-recognition', id, { dtype: 'q8', progress_callback });
+      if (!asr) {
+        // no graphics card help: run the model off the screen's thread, so the app never freezes while it thinks
+        try { T.env.backends.onnx.wasm.proxy = true; T.env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1)); } catch {}
+        try { asr = await T.pipeline('automatic-speech-recognition', id, { dtype: 'q8', progress_callback }); pv.log('voice: cpu model in a worker'); }
+        catch (e) { pv.log(`voice: worker failed (${e?.message || e}), plain cpu`); try { T.env.backends.onnx.wasm.proxy = false; } catch {} asr = await T.pipeline('automatic-speech-recognition', id, { dtype: 'q8', progress_callback }); }
+      }
       transcriber = asr;
       return asr;
     })();

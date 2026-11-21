@@ -216,6 +216,9 @@ body[data-theme="classic"] .chip { border-radius: 0; }
 #wvTitle { font-weight: 700; margin-inline-start: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50vw; }
 #wvHost { flex: 1; position: relative; }
 #wvHost webview { position: absolute; inset: 0; width: 100%; height: 100%; }
+body.wv-full #webWrap { z-index: 2147483000; background: #000; }
+body.wv-full .webbar { display: none !important; }
+body.wv-full #akai, body.wv-full .akai, body.wv-full #emuProg, body.wv-full #toast { display: none !important; }
 
 /* ---------- Dialogs ---------- */
 dialog {
