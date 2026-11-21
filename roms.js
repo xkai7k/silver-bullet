@@ -87,8 +87,18 @@ function sniffChd(file) {
     return 'ps1';
   } catch { return null; } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
 }
+// ".md" is both a Mega Drive game and a text note (README.md that comes inside downloads)
+function notMegaDrive(file) {
+  if (/^(readme|changelog|license|contributing|notes?|install|history)\b/i.test(path.basename(file))) return true;
+  try {
+    const st = fs.statSync(file); if (st.size < 32 * 1024) return true;
+    const fd = fs.openSync(file, 'r'); const b = readAt(fd, 0, 512); fs.closeSync(fd);
+    return !b.includes(0) && /^[\s\S]*$/.test(b.toString('utf8')) && b.toString('latin1', 0x100, 0x104) !== 'SEGA';
+  } catch { return false; }
+}
 function classify(file) {
   const ext = path.extname(file).slice(1).toLowerCase();
+  if (ext === 'md' && notMegaDrive(file)) return null; // README.md / notes, not a Mega Drive game
   if (BY_EXT[ext]) return BY_EXT[ext];
   if (ext === 'pbp') { const b = (() => { try { const fd = fs.openSync(file, 'r'); const x = readAt(fd, 0, 1 << 20).toString('latin1'); fs.closeSync(fd); return x; } catch { return ''; } })(); return b.includes('PSISOIMG') || b.includes('PSTITLEIMG') ? 'ps1' : 'psp'; }
   if (ext === 'chd') return sniffChd(file);
@@ -653,7 +663,9 @@ function setupRoms(ctx) {
     try {
       if (ARCHIVE.test(file)) {
         const names = await listArchive(file);
-        if (!names.some((n) => ROM_EXT.test(n) || /\.(bin|img)$/i.test(n))) return;
+        const romish = (n) => (ROM_EXT.test(n) || /\.(bin|img)$/i.test(n)) && !/(^|[\\/])(readme|changelog|license|contributing|notes?)[^\\/]*\.md$/i.test(n);
+        if (!names.some(romish)) return;
+        if (names.some((n) => /(^|[\\/])(package\.json|index\.html|main\.js)$/i.test(n))) return; // source code / a website, not a game
         if (names.some((n) => /\.(exe|dll|msi)$/i.test(n))) return; // a program, not a game
         send('rom:status', { step: 'extract', name: path.basename(file) });
         const base = path.basename(file).replace(ARCHIVE, '');

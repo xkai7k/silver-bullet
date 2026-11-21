@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld('api', {
   spDockHide: () => ipcRenderer.invoke('spdock:hide'),
   mediaArt: (t, a) => ipcRenderer.invoke('media:art', t, a),
   mediaSeek: (sec) => ipcRenderer.invoke('media:seek', sec),
-  shareStart: (groups) => ipcRenderer.invoke('share:start', groups),
+  shareStart: (groups, opts) => ipcRenderer.invoke('share:start', groups, opts),
   imgData: (src) => ipcRenderer.invoke('img:data', src),
   saveCard: (d, name) => ipcRenderer.invoke('card:save', d, name),
   showCard: (f) => ipcRenderer.invoke('card:show', f),

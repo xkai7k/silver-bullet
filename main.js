@@ -1011,7 +1011,32 @@ function lanAddress() {
   const all = Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal);
   return (all.find((i) => /^192\.168\./.test(i.address)) || all.find((i) => /^10\./.test(i.address)) || all.find((i) => /^172\.(1[6-9]|2\d|3[01])\./.test(i.address)) || all[0])?.address;
 }
+// Episodes to take on the phone / iPad: download them while on the same Wi-Fi, then watch anywhere without the PC
+function episodesPage(token) {
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const size = (f) => { try { const b = fs.statSync(f).size; return b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; } catch { return ''; } };
+  const show = share.files[0]?.game || '';
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(show)} — للجوال</title><style>
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;background:#0d1020;color:#f2f4fa}
+header{padding:18px 16px 8px}h1{margin:0;font-size:22px}header p{margin:6px 0 0;opacity:.7;font-size:14px}
+.ep{margin:10px 16px;padding:14px;border-radius:14px;background:#ffffff12;display:flex;flex-direction:column;gap:10px}
+.ep b{font-size:16px;word-break:break-word}.ep small{opacity:.6}
+.row{display:flex;gap:8px}.row a{flex:1;text-align:center;padding:12px;border-radius:12px;font-weight:700;text-decoration:none}
+a.dl{background:#1ed760;color:#000}a.pl{background:#ffffff22;color:#fff}
+.all{display:block;margin:6px 16px 0;padding:14px;border-radius:14px;background:#e8c26a;color:#1a1408;font-weight:800;text-align:center;text-decoration:none;font-size:16px}
+.tip{margin:12px 16px;padding:12px;border-radius:12px;background:#ffffff0d;font-size:13px;line-height:1.7}
+footer{padding:24px 16px;opacity:.6;font-size:12px;text-align:center}
+</style></head><body><header><h1>📺 ${esc(show)}</h1><p>${share.files.length} حلقة — نزّلها الحين وتابعها بعدين بدون الكمبيوتر وبدون نت.</p></header>
+<a class="all" href="#" id="all">⬇ نزّل الكل</a>
+${share.files.map((x, i) => { const src = `/f/${i}?t=${token}`; return `<div class="ep"><b>${esc(path.basename(x.f).replace(/\.[^.]+$/, ''))}</b><small>${size(x.f)}</small><div class="row"><a class="dl" href="${src}&dl=1" download>⬇ نزّلها</a><a class="pl" href="${src}" target="_blank">▶ شغّل الحين</a></div></div>`; }).join('')}
+<div class="tip"><b>آيفون / آيباد:</b> بعد التنزيل تلقاها في تطبيق <b>الملفات ← التنزيلات</b>. لو الحلقة MKV وما اشتغلت، افتحها بتطبيق <b>VLC</b> (مجاني).<br><b>أندرويد:</b> تروح للتنزيلات وتشتغل من المعرض أو VLC.<br>خل الجوال على <b>نفس الواي فاي</b> لين يخلص التنزيل.</div>
+<footer>هذي الصفحة من جهازك مباشرة وتتقفل لحالها بعد 3 ساعات.</footer>
+<script>document.getElementById('all').onclick=(e)=>{e.preventDefault();[...document.querySelectorAll('a.dl')].forEach((a,i)=>setTimeout(()=>a.click(),i*1500));};</script>
+</body></html>`;
+}
 function sharePage(token) {
+  if (share.kind === 'episodes') return episodesPage(token);
   const games = {};
   share.files.forEach((x, i) => { (games[x.game] ||= []).push({ ...x, i }); });
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1070,11 +1095,11 @@ ipcMain.handle('card:save', (_e, dataUrl, name) => {
 });
 ipcMain.handle('card:show', (_e, file) => { shell.showItemInFolder(file); });
 
-ipcMain.handle('share:start', async (_e, groups) => {
+ipcMain.handle('share:start', async (_e, groups, opts = {}) => {
   stopShare();
   const files = [];
   for (const g of groups || []) for (const x of g.files || []) if (x && x.f && fs.existsSync(x.f)) files.push({ f: x.f, video: !!x.video, game: g.game });
-  if (!files.length) return { error: 'ما فيه لقطات تنرسل' };
+  if (!files.length) return { error: opts.kind === 'episodes' ? 'ما لقيت ملفات الحلقات' : 'ما فيه لقطات تنرسل' };
   const ip = lanAddress();
   if (!ip) return { error: 'الجهاز مو متصل بشبكة' };
   const token = crypto.randomBytes(9).toString('hex');
@@ -1103,9 +1128,9 @@ ipcMain.handle('share:start', async (_e, groups) => {
     server.once('error', () => server.listen(0, '0.0.0.0', () => resolve(server.address().port)));
     server.listen(8765, '0.0.0.0', () => resolve(server.address().port));
   });
-  share = { server, token, files, url: `http://${ip}:${port}/?t=${token}` };
+  share = { server, token, files, kind: opts.kind || 'shots', url: `http://${ip}:${port}/?t=${token}` };
   const qrSvg = qrSvgOf(share.url);
-  share.timer = setTimeout(stopShare, 30 * 60 * 1000);
+  share.timer = setTimeout(stopShare, (share.kind === 'episodes' ? 180 : 30) * 60 * 1000); // episodes are big: 3 hours to take them
   log('share started', files.length, 'files on', ip, port);
   return { url: share.url, count: files.length, qr: qrSvg };
 });

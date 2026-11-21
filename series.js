@@ -38,6 +38,46 @@
     box.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { p.folders.splice(Number(b.dataset.rm), 1); save(); renderPage(); });
   };
 
+
+  // ---------- take episodes to the phone / iPad (download over Wi-Fi, watch later without the PC) ----------
+  function toPhone(sh) {
+    const last = showState()[sh.dir];
+    let from = Math.max(0, sh.episodes.findIndex((e) => e.file === last));
+    while (from < sh.episodes.length - 1 && (prog()[sh.episodes[from].file]?.d && prog()[sh.episodes[from].file].t / prog()[sh.episodes[from].file].d > 0.9)) from++;
+    const pick = new Set(sh.episodes.slice(from, from + 3).map((e) => e.file));
+    const draw = () => {
+      dlg.innerHTML = `
+        <div class="sd-head"><h2>📱 ${esc(sh.name)} للجوال</h2><span class="spacer"></span>
+          <button class="btn primary" data-go ${pick.size ? '' : 'disabled'}>جهّز الباركود (${pick.size})</button><button class="btn ghost" data-back>رجوع</button></div>
+        <p class="hint" style="margin:4px 0 10px">اختر الحلقات، امسح الباركود بالجوال أو الآيباد ونزّلها. بعدها تتابعها في أي مكان بدون الكمبيوتر.</p>
+        <div class="ep-list">${sh.episodes.map((e, i) => `<button class="ep ${pick.has(e.file) ? 'cur' : ''}" data-pk="${i}"><span class="ep-n">${pick.has(e.file) ? '✓' : i + 1}</span><span class="ep-t">${esc(epCode(e.name) ? epCode(e.name) + ' · ' : '')}${esc(cleanEp(e.name))}</span></button>`).join('')}</div>`;
+      dlg.querySelector('[data-back]').onclick = () => openShow(sh);
+      dlg.querySelectorAll('[data-pk]').forEach((b) => b.onclick = () => { const f = sh.episodes[Number(b.dataset.pk)].file; pick.has(f) ? pick.delete(f) : pick.add(f); draw(); });
+      dlg.querySelector('[data-go]').onclick = go;
+    };
+    const go = async () => {
+      dlg.innerHTML = '<h2>📱 أجهّز…</h2>';
+      const r = await pv.shareStart([{ game: sh.name, files: sh.episodes.filter((e) => pick.has(e.file)).map((e) => ({ f: e.file, video: true })) }], { kind: 'episodes' });
+      if (!r || r.error) { dlg.innerHTML = `<h2>📱 للجوال</h2><p class="hint">${esc(r?.error || 'يشتغل داخل البرنامج')}</p><div class="actions"><button class="btn ghost" data-back>رجوع</button></div>`; dlg.querySelector('[data-back]').onclick = () => openShow(sh); return; }
+      dlg.innerHTML = `
+        <h2>📱 ${esc(sh.name)} — ${r.count} حلقة</h2>
+        <div class="share-body">
+          <div class="qr">${r.qr || ''}</div>
+          <div><ol class="share-steps">
+            <li>خل الجوال أو الآيباد على <b>نفس الواي فاي</b>.</li>
+            <li>صوّر الباركود بالكاميرا.</li>
+            <li>اضغط <b>"⬇ نزّل الكل"</b> وانتظر لين يخلص.</li>
+            <li>خلاص: تتابعها بعدين بدون الكمبيوتر وبدون نت.</li>
+          </ol>
+          <p class="hint">أو اكتب الرابط:<br><b dir="ltr" class="share-url">${esc(r.url)}</b></p>
+          <p class="hint">تقدر أكثر من جهاز ياخذها بنفس الباركود. الرابط يتقفل بعد 3 ساعات.</p></div>
+        </div>
+        <div class="actions"><button class="btn ghost" data-stop>إيقاف</button><button class="btn primary" data-x>تم</button></div>`;
+      dlg.querySelector('[data-x]').onclick = () => dlg.close();
+      dlg.querySelector('[data-stop]').onclick = async () => { await pv.shareStop(); dlg.close(); toast('وقفت المشاركة'); };
+    };
+    draw();
+  }
   // ---------- a show: episodes list ----------
   const dlg = document.createElement('dialog'); dlg.id = 'showDlg'; document.body.appendChild(dlg);
   function openShow(sh) {
@@ -46,6 +86,7 @@
     dlg.innerHTML = `
       <div class="sd-head"><h2>${esc(sh.name)}</h2><span class="spacer"></span>
         ${last ? `<button class="btn primary" data-cont>▶ كمّل ${esc(epCode(last.split(/[\\/]/).pop()))}</button>` : `<button class="btn primary" data-first>▶ ابدأ</button>`}
+        <button class="btn ghost" data-phone title="نزّل حلقات على الجوال أو الآيباد وتابعها بدون الكمبيوتر">📱 للجوال</button>
         <button class="btn ghost" data-x>إغلاق</button></div>
       <div class="ep-list">${sh.episodes.map((e, i) => {
         const pr = prog()[e.file]; const pct = pr && pr.d ? Math.min(100, Math.round((pr.t / pr.d) * 100)) : 0;
@@ -53,6 +94,7 @@
           <span class="ep-p">${pct > 90 ? '✓' : pr?.t ? fmt(pr.t) : ''}</span><i style="--p:${pct}%"></i></button>`;
       }).join('')}</div>`;
     dlg.querySelector('[data-x]').onclick = () => dlg.close();
+    dlg.querySelector('[data-phone]').onclick = () => toPhone(sh);
     dlg.querySelector('[data-cont]')?.addEventListener('click', () => { dlg.close(); play(sh, sh.episodes.find((e) => e.file === last) || sh.episodes[0]); });
     dlg.querySelector('[data-first]')?.addEventListener('click', () => { dlg.close(); play(sh, sh.episodes[0]); });
     dlg.querySelectorAll('[data-ep]').forEach((b) => b.onclick = () => { dlg.close(); play(sh, sh.episodes[Number(b.dataset.ep)]); });
