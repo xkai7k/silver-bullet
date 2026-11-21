@@ -887,6 +887,7 @@ function renderDrawer() {
 const logsDlg = document.createElement('dialog'); logsDlg.id = 'logsDlg'; document.body.appendChild(logsDlg);
 // What probably went wrong, and what to do — shown under each error in the log
 const LOG_FIXES = [
+  [/path missing/i, 'اللعبة أو البرنامج مو موجود بمكانه: انحذف أو انتقل. افتح بطاقته وعدّل المسار، أو احذفه.'],
   [/prod\.keys|keys? (file|not found)|Could not load keys/i, 'مفاتيح السويتش ناقصة: الإعدادات ← المفاتيح والبايوس، واسحب ملف prod.keys.'],
   [/firmware/i, 'فيرموير السويتش: اسحب ملف الفيرموير (zip) في الإعدادات ← المفاتيح والبايوس.'],
   [/bios/i, 'البايوس ناقص لهذا الجهاز: اسحب ملفات البايوس في الإعدادات ← المفاتيح والبايوس.'],
@@ -906,7 +907,7 @@ async function openLogs(tab = 'dl') {
   const r = await pv.logsGet();
   const when = (t) => new Date(t).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
   // whole words only ("Terrors" or "Deadly Sins" in a game name aren't errors), and normal notes (pictures, a site that moved) aren't either
-  const isErr = (l) => !/\b(ui: )?(console )?art: |ERR_ABORTED|ui froze|transformers@|gpu hiccup/i.test(l) && /\b(fail(ed|ure)?|errors?|exception|crash(ed)?|corrupt|invalid|refused|denied|not found)\b|ما قدرت/i.test(l) || (!/ERR_ABORTED/.test(l) && /\b[A-Z][a-z]*Error\b|rejection:|Uncaught/.test(l));
+  const isErr = (l) => !/\b(ui: )?(console )?art: |ERR_ABORTED|ui froze|transformers@|gpu hiccup/i.test(l) && /\b(fail(ed|ure)?|errors?|exception|crash(ed)?|corrupt|invalid|refused|denied|not found|path missing)\b|ما قدرت/i.test(l) || (!/ERR_ABORTED/.test(l) && /\b[A-Z][a-z]*Error\b|rejection:|Uncaught/.test(l));
   let onlyErr = false;
   const draw = () => {
     const ev = r.events.filter((l) => !onlyErr || isErr(l));
@@ -2271,6 +2272,49 @@ function applyPlugins() {
   document.body.classList.toggle('no-blur', !!data.settings.noBlur);
   if (!plugOn('tunes')) window.Music?.pause?.();
 }
+// ---------- Self test: walk through every screen and the read-only parts of the PC side; anything that breaks goes in the log ----------
+async function selfTest() {
+  const errs = []; const t0 = Date.now();
+  const onErr = (e) => errs.push(String(e.message || e.reason?.message || e.reason || e));
+  window.addEventListener('error', onErr); window.addEventListener('unhandledrejection', onErr);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const step = async (name, fn) => { const n = errs.length; const s0 = performance.now(); try { await fn(); } catch (e) { errs.push(String(e?.message || e)); } await wait(250); const ms = Math.round(performance.now() - s0 - 250); if (errs.length > n) pv.log(`selftest ✗ ${name}: ${errs.slice(n).join(' | ')}`); else if (ms > 800) pv.log(`selftest slow ${name}: ${ms}ms`); };
+  const closeAll = () => { document.querySelectorAll('dialog[open]').forEach((d) => d.close()); window.closeDetail?.(); closeDrawer(); try { if (!$('#webWrap').hidden) closeWeb(); } catch {} };
+  for (const p of data.pages) {
+    await step('page ' + p.id, () => goPage(p.id));
+    await step('detail ' + p.id, () => { const t = document.querySelector('#view .tile[data-item]'); if (t) openDetail(findItem(t.dataset.item).item); });
+    closeAll();
+  }
+  await step('home', () => goHome());
+  await step('settings', () => openSettings());
+  for (const t of ['general', 'controls', 'moods', 'look', 'keys', 'plugins', 'advanced', 'phone']) await step('settings tab ' + t, () => openSettings(t));
+  closeAll();
+  for (const [n, fn] of [['logs', () => openLogs('ev')], ['ratings', () => window.SB?.openRatings('tiers')], ['help', () => window.Help?.open()], ['themes', () => openThemePicker()], ['pad', () => window.openPadCenter?.()], ['drawer', () => openDrawer()], ['spotify pop', () => window.spPopOpen?.()]]) { await step(n, fn); closeAll(); }
+  const ipc = [['emuCatalog'], ['romsList'], ['btBattery'], ['sysScan'], ['spotifyNow'], ['logsGet'], ['seriesScan', page('watch')?.folders || []], ['torList'], ['remoteGet'], ['modsPaths']];
+  for (const [f, ...a] of ipc) if (pv[f]) await step('pc ' + f, () => pv[f](...a));
+  await step('paths', () => checkPaths());
+  goHome();
+  window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onErr);
+  pv.log(`selftest done in ${Math.round((Date.now() - t0) / 1000)}s: ${errs.length} problems`);
+}
+
+// ---------- Saved paths that no longer exist: pictures get fetched again, missing games are written in the log ----------
+async function checkPaths() {
+  const items = allItems().map((i) => ({ id: i.id, target: i.target, args: i.args, image: i.image, hero: i.hero, icon: i.icon, rom: i.rom }));
+  const res = await pv.pathsCheck?.(items).catch(() => null);
+  if (!res) return;
+  let pics = 0; const gone = [];
+  for (const r of res) {
+    const it = allItems().find((i) => i.id === r.id); if (!it) continue;
+    for (const k of ['image', 'hero', 'icon']) if (r.bad.includes(k)) { it[k] = ''; delete it.artTried; pics++; }
+    if (r.bad.includes('target') || r.bad.includes('rom') || r.bad.includes('arg')) gone.push(it);
+  }
+  if (pics) { save(); render(); }
+  for (const it of gone) pv.log(`path missing: ${it.name} → ${it.rom || it.target}`);
+  pv.log(`paths checked: ${items.length} items, ${pics} pictures to fetch again, ${gone.length} games/apps not on disk`);
+  data.missing = gone.map((i) => i.id);
+}
+
 // ---------- This PC: look at it once, then set the app up to fit it (not every PC is like the one it was made on) ----------
 const KIND_ICON = { audio: '🎧', pad: '🎮', mouse: '🖱', keyboard: '⌨', receiver: '📡', phone: '📱', other: '📶' };
 async function deviceScan(fresh) {
@@ -2406,7 +2450,7 @@ function voiceCandidates() {
 // ---------- Music by voice: works inside the app and (only this) from outside it ----------
 // "قدّم الأغنية" / "الأغنية اللي بعدها" / "go to the next song" / "خل الصوت 32" / "ارفع الصوت"…
 const AR_NUM = { 'صفر': 0, 'واحد': 1, 'اثنين': 2, 'ثنين': 2, 'ثلاث': 3, 'ثلاثه': 3, 'اربع': 4, 'اربعه': 4, 'خمس': 5, 'خمسه': 5, 'ست': 6, 'سته': 6, 'سبع': 7, 'سبعه': 7, 'ثمان': 8, 'ثمانيه': 8, 'ثماني': 8, 'تسع': 9, 'تسعه': 9, 'عشر': 10, 'عشره': 10,
-  'عشرين': 20, 'ثلاثين': 30, 'اربعين': 40, 'خمسين': 50, 'ستين': 60, 'سبعين': 70, 'ثمانين': 80, 'تسعين': 90, 'ميه': 100, 'مية': 100, 'ميه': 100, 'نص': 50, 'النص': 50,
+  'عشرين': 20, 'ثلاثين': 30, 'اربعين': 40, 'خمسين': 50, 'ستين': 60, 'سبعين': 70, 'ثمانين': 80, 'تسعين': 90, 'ميه': 100, 'مية': 100, 'نص': 50, 'النص': 50,
   'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90, 'hundred': 100, 'half': 50 };
 function spokenNumber(t) {
   const d = String(t).replace(/[٠-٩]/g, (c) => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).match(/\d{1,3}/);
@@ -2518,6 +2562,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
   render();
   pv.log(`ui ready: ${data.pages.length} pages, ${allItems().length} items, theme ${data.theme}`);
   if (inElectron) setTimeout(() => deviceScan(false), 5000);
+  if (inElectron) setTimeout(checkPaths, 25000);
   try {
     const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput').length;
     pv.log(`env: webgpu ${!!navigator.gpu}, mics ${mics}`);

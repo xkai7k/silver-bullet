@@ -109,10 +109,11 @@
   function connect(name) {
     me = 'g' + Math.random().toString(36).slice(2, 12);
     ws = new WebSocket(`${SIG}&id=${me}&token=${Math.random().toString(36).slice(2, 12)}&version=1.5.4`);
-    ws.onopen = () => { clearInterval(hb); hb = setInterval(() => { try { ws.send('{"type":"HEARTBEAT"}'); } catch {} }, 5000); };
+    ws.onopen = () => { clearInterval(hb); hb = setInterval(() => { try { ws.send('{"type":"HEARTBEAT"}'); relay({ t: 'hello', name }); } catch {} }, 5000); };
     ws.onmessage = async (e) => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
-      if (m.type === 'OPEN') call(name);
+      if (m.type === 'OPEN') { relay({ t: 'hello', name }); call(name); }
+      else if (m.type === 'CANDIDATE' && m.payload?.sb) onMsg(m.payload.sb); // the backup path through the signal server
       else if (m.type === 'ANSWER' && pc) { await pc.setRemoteDescription({ type: 'answer', sdp: m.payload.sdp }).catch(() => {}); for (const c of early.splice(0)) pc.addIceCandidate(c).catch(() => {}); }
       else if (m.type === 'CANDIDATE' && pc && m.payload?.c) { if (pc.remoteDescription) pc.addIceCandidate(m.payload.c).catch(() => {}); else early.push(m.payload.c); }
       else if (m.type === 'EXPIRE') { lost('ما لقيته. يمكن قفل "تابع معي" أو البرنامج.'); }
@@ -130,17 +131,19 @@
     pc.onicecandidate = (e) => e.candidate && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { c: e.candidate, connectionId: 'sb' } }));
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') { retry = 0; setStatus('متصل', true); if (/مو متصل/.test($('#sent').textContent)) $('#sent').textContent = ''; }
-      if (pc.connectionState === 'failed') lost('انقطع الاتصال. يمكن الشبكة تمنع الاتصال المباشر.');
+      if (pc.connectionState === 'failed' && !(lastState && Date.now() - lastState < 7000)) lost('انقطع الاتصال. يمكن الشبكة تمنع الاتصال المباشر.');
     };
     dc = pc.createDataChannel('sb');
-    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === 'state') { lastState = Date.now(); onState(m); } if (m.t === 'restart') { lastState = 0; lost('البرنامج عنده يعيد التشغيل… أرجع أتصل لحالي'); } if (m.t === 'answer') { $('#sent').textContent = m.yes ? '✓ وافق على طلبك' : '✕ ما وافق هالمرة'; setTimeout(() => { $('#sent').textContent = ''; }, 4000); } if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } };
-    dc.onclose = () => { if (!ended) lost('انقطع الاتصال…'); };
+    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } onMsg(m); };
+    dc.onclose = () => {};
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     ws.send(JSON.stringify({ type: 'OFFER', dst: host, payload: { sdp: offer.sdp, name, type: 'media', connectionId: 'sb' } }));
     setStatus('ينتظر الرد…');
     setTimeout(() => { if (!state && !ended) lost('ما رد. تأكد إن "تابع معي" شغّال عنده والبرنامج مفتوح.'); }, 20000);
   }
+  function relay(m) { try { ws?.readyState === 1 && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { sb: m, connectionId: 'sb' } })); } catch {} }
+  function onMsg(m) { if (!m || !m.t) return; if (m.t === 'state' && !m.at) return; if (m.t === 'state') { lastState = Date.now(); onState(m); } if (m.t === 'restart') { lastState = 0; lost('البرنامج عنده يعيد التشغيل… أرجع أتصل لحالي'); } if (m.t === 'answer') { $('#sent').textContent = m.yes ? '✓ وافق على طلبك' : '✕ ما وافق هالمرة'; setTimeout(() => { $('#sent').textContent = ''; }, 4000); } if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } }
 
   function lost(t) {
     setStatus(t, false);
@@ -209,10 +212,10 @@
 
   let lastReq = 0;
   function req(what, label) {
-    if (!dc || dc.readyState !== 'open' || !lastState || Date.now() - lastState > 7000) { $('#sent').textContent = '⚠️ مو متصل الحين، أحاول أرجع أتصل… جرّب بعد ثواني'; reconnect(); return; }
+    if (!lastState || Date.now() - lastState > 7000 || !(dc?.readyState === 'open' || ws?.readyState === 1)) { $('#sent').textContent = '⚠️ مو متصل الحين، أحاول أرجع أتصل… جرّب بعد ثواني'; reconnect(); return; }
     if (Date.now() - lastReq < 3000) { $('#sent').textContent = 'انتظر شوي قبل طلب ثاني'; return; }
     lastReq = Date.now();
-    dc.send(JSON.stringify({ t: 'req', what }));
+    if (dc?.readyState === 'open') dc.send(JSON.stringify({ t: 'req', what })); else relay({ t: 'req', what });
     $('#sent').textContent = `⏳ وصله طلبك: ${label}. ننتظر رده…`;
   }
   $('#rToggle').onclick = () => req('toggle', 'إيقاف / تشغيل');

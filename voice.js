@@ -113,7 +113,7 @@
       if (!speaking) { show('ما سمعت شي', 'error'); return; }
       show('لحظة…', 'think');
       const out = await withTimeout(asr(audio, { language: 'arabic', task: 'transcribe' }), 25000, 'asr');
-      const text = (Array.isArray(out) ? out[0]?.text : out?.text || '').trim();
+      const text = ((Array.isArray(out) ? out[0]?.text : out?.text) || '').trim();
       pv.log(`voice: command "${text}"`);
       if (!text) { show('ما فهمت، قلها مرة ثانية', 'error'); return; }
       respond(text);
@@ -210,7 +210,7 @@
           let out;
           try { out = await withTimeout(asr(audio, { language: 'arabic', task: 'transcribe' }), 20000, 'wake asr'); }
           catch (e) { if (/WebGPU|zero-sized/i.test(String(e?.message || e))) { pv.log('voice: gpu hiccup, skipped one sound'); return; } throw e; }
-          const text = (Array.isArray(out) ? out[0]?.text : out?.text || '').trim();
+          const text = ((Array.isArray(out) ? out[0]?.text : out?.text) || '').trim();
           if (text && data.settings?.voiceDebug) pv.log(`voice heard: ${text}`);
           if (document.body.classList.contains('playing-video')) return;
           const rest = text && wakeMatch(text);

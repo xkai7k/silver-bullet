@@ -1504,6 +1504,20 @@ ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.handle('update:restart', () => { byeSaid = true; app.relaunch(fs.existsSync(INSTALLED_EXE) ? { execPath: INSTALLED_EXE, args: [] } : undefined); app.exit(0); });
 ipcMain.handle('game:running', () => gamesRunning > 0);
 // Photos / clips list → delete: goes to the Recycle Bin (you can bring it back)
+// Every saved path still there? (a game moved or uninstalled, a picture deleted, an emulator folder renamed)
+ipcMain.handle('paths:check', async (_e, items) => {
+  const local = (p) => typeof p === 'string' && /^[a-z]:[\\/]|^\\\\/i.test(p);
+  const out = [];
+  for (const it of items || []) {
+    const bad = [];
+    const target = String(it.target || '').replace(/^"|"$/g, '');
+    if (local(target) && !fs.existsSync(target)) bad.push('target');
+    for (const k of ['image', 'hero', 'icon', 'rom']) { const v = String(it[k] || '').replace(/^file:\/\/\/?/, ''); if (local(v) && !fs.existsSync(decodeURIComponent(v))) bad.push(k); }
+    for (const a of [].concat(it.args || [])) if (local(a) && /\.\w{2,4}$/.test(a) && !fs.existsSync(a)) bad.push('arg');
+    if (bad.length) out.push({ id: it.id, bad });
+  }
+  return out;
+});
 ipcMain.handle('file:trash', async (_e, files) => { let n = 0; for (const f of files || []) { try { await shell.trashItem(f); n++; } catch (e) { log('trash failed', f, e.message); } } return n; });
 ipcMain.handle('data:open', () => shell.openPath(app.getPath('userData')));
 // Spotify's own volume in the Windows mixer (or the whole PC when Spotify isn't making sound)

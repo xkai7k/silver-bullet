@@ -30,28 +30,48 @@
         if ((party.taken = (party.taken || 0) + 1) > 6) { party.id = newId(); try { data.settings.partyId = party.id; save(); } catch {} party.link = `${GUEST_PAGE}?r=${party.id}`; api.qrSvg?.(party.link).then((q) => { party.qr = q; drawPanel(); }); }
         setTimeout(() => party && connectSig(), 5000);
       }
-      else if (m.type === 'OFFER') onOffer(m.src, m.payload);
+      else if (m.type === 'OFFER') { api.log?.('party offer from ' + m.src + ' (' + (m.payload?.name || '?') + ')'); onOffer(m.src, m.payload).catch((e) => api.log?.('party offer failed: ' + e.message)); }
+      else if (m.type === 'CANDIDATE' && m.payload?.sb) onRelay(m.src, m.payload.sb);
       else if (m.type === 'CANDIDATE') { const g = party.guests.get(m.src); if (g && m.payload?.c) { if (g.pc.remoteDescription) g.pc.addIceCandidate(m.payload.c).catch(() => {}); else g.early.push(m.payload.c); } }
       else if (m.type === 'LEAVE' || m.type === 'EXPIRE') dropGuest(m.src);
     };
     ws.onerror = () => api.log?.('party signal error');
     ws.onclose = () => { clearInterval(party?.hb); if (!party) return; party.online = false; drawPanel(); setTimeout(() => party && connectSig(), 3000); };
   }
+  // Backup path through the signal server: works even when the two networks can't connect directly
+  // (mobile data, strict routers). Requests, answers and "what's playing" go this way; only the live screen needs the direct link.
+  function onRelay(src, m) {
+    let g = party.guests.get(src);
+    if (m.t === 'hello') {
+      if (!g) { g = { id: src, name: String(m.name || 'ضيف').slice(0, 24), pc: null, dc: null, early: [], relay: true, joined: true }; party.guests.set(src, g); api.log?.('party guest joined (relay): ' + g.name); toastP(`👀 ${g.name} دخل يتابع معك`); drawViewers(); }
+      if (!g.joined) { g.joined = true; api.log?.('party guest here: ' + g.name); toastP(`👀 ${g.name} دخل يتابع معك`); drawViewers(); }
+      g.seen = Date.now(); if (!g.name || g.name === 'ضيف') g.name = String(m.name || 'ضيف').slice(0, 24);
+      sendTo(g, stateMsg || '{"t":"state"}');
+    } else if (m.t === 'req' && g) { g.seen = Date.now(); api.log?.(`party request from ${g.name} (relay): ${m.what}`); try { ask(g, m.what); } catch (e) { api.log?.('party ask failed: ' + e.message); } }
+    else if (m.t === 'bye' && g) dropGuest(src);
+  }
+  const isOpen = (g) => g.dc?.readyState === 'open' || (g.relay && Date.now() - (g.seen || 0) < 20000);
+  function sendTo(g, msg) {
+    if (g.dc?.readyState === 'open') { try { g.dc.send(msg); return; } catch {} }
+    send('CANDIDATE', g.id, { sb: JSON.parse(msg), connectionId: 'sb' });
+  }
+  let stateMsg = '';
   const newId = () => 'sb' + Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 
   async function onOffer(src, p) {
     if (!p?.sdp) return;
+    const was = party.guests.get(src)?.joined;
     dropGuest(src, true);
     const pc = new RTCPeerConnection({ iceServers: ICE });
-    const g = { id: src, name: String(p.name || 'ضيف').slice(0, 24), pc, dc: null, early: [] };
-    party.guests.set(src, g);
+    const g = { id: src, name: String(p.name || 'ضيف').slice(0, 24), pc, dc: null, early: [], relay: true, seen: Date.now(), joined: was };
+    party.guests.set(src, g); drawViewers();
     pc.onicecandidate = (e) => e.candidate && send('CANDIDATE', src, { c: e.candidate, connectionId: 'sb' });
-    pc.onconnectionstatechange = () => { if (['failed', 'closed'].includes(pc.connectionState)) dropGuest(src); };
+    pc.onconnectionstatechange = () => { api.log?.(`party link to ${g.name}: ${pc.connectionState}`); if (pc.connectionState === 'failed') { try { pc.close(); } catch {} g.pc = null; g.dc = null; /* direct link failed: keep them on the backup path */ } };
     pc.ondatachannel = (e) => {
       g.dc = e.channel;
-      g.dc.onopen = () => { api.log?.('party guest joined: ' + g.name); toastP(`👀 ${g.name} دخل يتابع معك`); drawViewers(); pushState(); };
+      g.dc.onopen = () => { api.log?.('party guest joined (direct): ' + g.name); if (!g.joined) toastP(`👀 ${g.name} دخل يتابع معك`); g.joined = true; drawViewers(); pushState(); };
       g.dc.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } if (m.t === 'req') { api.log?.(`party request from ${g.name}: ${m.what}`); try { ask(g, m.what); } catch (e) { api.log?.('party ask failed: ' + e.message); toastP(`🙋 ${g.name} ${WHAT[m.what] || ''}`); } } };
-      g.dc.onclose = () => dropGuest(src);
+      g.dc.onclose = () => { if (!g.relay || Date.now() - (g.seen || 0) > 20000) dropGuest(src); };
     };
     await pc.setRemoteDescription({ type: 'offer', sdp: p.sdp });
     for (const c of g.early.splice(0)) pc.addIceCandidate(c).catch(() => {});
@@ -69,8 +89,8 @@
   function dropGuest(id, quiet) {
     const g = party?.guests.get(id); if (!g) return;
     party.guests.delete(id);
-    try { g.pc.close(); } catch {}
-    if (!quiet && g.dc) toastP(`${g.name} طلع`);
+    try { g.pc?.close(); } catch {}
+    if (!quiet && g.joined) toastP(`${g.name} طلع`);
     drawViewers();
   }
 
@@ -83,7 +103,7 @@
     }
     if (!on && party.stream) { party.stream.getTracks().forEach((t) => t.stop()); party.stream = null; }
     party.sharing = !!on;
-    for (const g of party.guests.values()) for (const t of g.pc.getTransceivers()) {
+    for (const g of party.guests.values()) for (const t of g.pc?.getTransceivers() || []) {
       const kind = t.receiver.track?.kind;
       t.sender.replaceTrack(party.stream?.getTracks().find((x) => x.kind === kind) || null).catch(() => {});
     }
@@ -96,8 +116,9 @@
     const st = id ? await api.videoState?.(id).catch(() => null) : null;
     const url = (() => { try { return wv()?.getURL(); } catch { return ''; } })() || '';
     const title = ($('#webWrap')?.hidden ? '' : $('#wvTitle')?.textContent) || '';
-    const msg = JSON.stringify({ t: 'state', title, url, yt: ytId(url), time: st?.t || 0, dur: st?.d || 0, playing: !!st?.playing, at: Date.now(), sharing: !!party.sharing, viewers: [...party.guests.values()].filter((g) => g.dc?.readyState === 'open').map((g) => g.name) });
-    for (const g of party.guests.values()) if (g.dc?.readyState === 'open') { try { g.dc.send(msg); } catch {} }
+    for (const g of [...party.guests.values()]) if (g.relay && !g.dc && Date.now() - (g.seen || 0) > 25000) dropGuest(g.id); // backup-path friends who went quiet
+    const msg = stateMsg = JSON.stringify({ t: 'state', title, url, yt: ytId(url), time: st?.t || 0, dur: st?.d || 0, playing: !!st?.playing, at: Date.now(), sharing: !!party.sharing, viewers: [...party.guests.values()].filter(isOpen).map((g) => g.name) });
+    for (const g of party.guests.values()) if (isOpen(g)) sendTo(g, msg);
   }
 
   // ---- requests: they ask, you decide ----
@@ -132,7 +153,7 @@
   async function answer(yes) {
     const q = askQ.shift(); if (!q) return;
     if (yes) { const id = wcId(); if (id) await api.videoCtl?.(id, q.what, 10); setTimeout(pushState, 300); }
-    try { q.g.dc?.send(JSON.stringify({ t: 'answer', what: q.what, yes })); } catch {}
+    try { sendTo(q.g, JSON.stringify({ t: 'answer', what: q.what, yes })); } catch {}
     drawAsk();
   }
 
@@ -140,7 +161,7 @@
   function toastP(m) { try { window.toast ? window.toast(m) : null; } catch {} const t = $('#toast'); if (t && !window.toast) { t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2600); } }
   function drawViewers() {
     const bar = $('#partyBar'); if (!bar) return;
-    const names = party ? [...party.guests.values()].filter((g) => g.dc?.readyState === 'open').map((g) => g.name) : [];
+    const names = party ? [...party.guests.values()].filter(isOpen).map((g) => g.name) : [];
     bar.hidden = !party;
     bar.innerHTML = party ? `<span class="pb-dot ${party.online ? 'on' : ''}"></span>${names.length ? `👀 يتابع معك: <b>${names.map(esc).join('، ')}</b>` : 'تابع معي شغّال… محد دخل للحين'}${party.sharing ? '<span class="pb-live">🔴 شاشتك ظاهرة لهم</span>' : ''}` : '';
     bar.onclick = () => openPanel();
@@ -148,7 +169,7 @@
   }
   function drawPanel() {
     const p = $('#partyPanel'); if (!p || !party) return;
-    const names = [...party.guests.values()].filter((g) => g.dc?.readyState === 'open').map((g) => g.name);
+    const names = [...party.guests.values()].filter(isOpen).map((g) => g.name);
     p.innerHTML = `
       <div class="pp-head"><b>👥 تابع معي</b><button class="btn ghost icon pp-x" title="سكّر">✕</button></div>
       <div class="pp-qr">${party.qr || ''}</div>
@@ -187,14 +208,14 @@
     if (!party) return;
     const p = party; party = null;
     clearInterval(p.poll); clearInterval(p.hb);
-    for (const g of p.guests.values()) { try { g.dc?.send(JSON.stringify({ t: 'end' })); } catch {} try { g.pc.close(); } catch {} }
+    for (const g of p.guests.values()) { try { g.dc?.readyState === 'open' ? g.dc.send('{"t":"end"}') : p.ws?.send(JSON.stringify({ type: 'CANDIDATE', dst: g.id, payload: { sb: { t: 'end' }, connectionId: 'sb' } })); } catch {} try { g.pc?.close(); } catch {} }
     p.stream?.getTracks().forEach((t) => t.stop());
     try { p.ws.onclose = null; p.ws.close(); } catch {}
-    drawViewers(); $('#partyPanel')?.remove(); $('#partyReqs').innerHTML = '';
+    drawViewers(); $('#partyPanel')?.remove(); const rq = $('#partyReqs'); if (rq) rq.innerHTML = '';
   }
 
   // the app is closing / reloading: tell the friends, so their page reconnects instead of waiting
-  window.addEventListener('beforeunload', () => { if (!party) return; for (const g of party.guests.values()) { try { g.dc?.send(JSON.stringify({ t: 'restart' })); } catch {} } });
+  window.addEventListener('beforeunload', () => { if (!party) return; for (const g of party.guests.values()) { try { sendTo(g, '{"t":"restart"}'); } catch {} } });
   const btn = $('#wvParty'); if (btn) btn.onclick = start;
   // leaving the watch screen ends it
   $('#wvClose')?.addEventListener('click', () => stop());
