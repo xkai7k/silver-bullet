@@ -13,9 +13,18 @@ A Windows launcher for games and media, in Arabic. On first start it sets itself
 - **سبوتيفاي:** تسجّل دخولك في سبوتيفاي حقك.
 - **أكاي:** مساعد صوتي، تناديه باسمه وتعطيه أمر.
 
-## التشغيل
+## التحميل — نسختين
+
+### ١) النسخة الجاهزة (للنت البطيء) ⭐
+ملف واحد فيه كل شيء، ما يحتاج Node.js ولا تحميل ثاني:
+**[⬇️ Silver-Bullet-Ready.zip](https://github.com/xkai7k/silver-bullet/releases/latest/download/Silver-Bullet-Ready.zip)**
+1. فك الضغط (كليك يمين ← Extract All).
+2. افتح **Silver Bullet.exe**. يثبّت نفسه ويحط اختصار على سطح المكتب، وبعدها تقدر تحذف المجلد.
+3. لو طلع "Windows protected your PC": اضغط **More info** ← **Run anyway**.
+
+### ٢) النسخة العادية (الكود)
 1. نزّل الملفات (Code ← Download ZIP) وفكها.
-2. افتح **Start.bat**. أول مرة يطلب Node.js لو ما كان عندك، وينزّل الباقي.
+2. افتح **Start.bat**. أول مرة يطلب Node.js لو ما كان عندك، وينزّل الباقي (~100 ميقا).
 3. البرنامج يثبّت نفسه، ويحط اختصار **Silver Bullet** على سطح المكتب وقائمة ابدأ.
 
 ## اللي ما ينزل مع البرنامج (لازم يكون منك)
