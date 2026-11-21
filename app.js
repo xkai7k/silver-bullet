@@ -299,7 +299,7 @@ function setBackground(url) {
 // ---------- Navigation ----------
 function clearSpecialViews() { if (window.SB) { SB.moodView = null; SB.ratingsView = null; } }
 function goHome() { currentPageId = null; clearSpecialViews(); closeWebIfOpen(); window.closeDetail?.(); render(); }
-function goPage(id, filter = 'all') { if (!page(id)) return; clearSpecialViews(); currentPageId = id; currentFilter = filter; closeWebIfOpen(); render(); }
+function goPage(id, filter = 'all') { if (!page(id)) return; clearSpecialViews(); currentPageId = id; currentFilter = filter; closeWebIfOpen(); if (!document.getElementById('detail')?.hidden) window.closeDetail?.(); render(); }
 
 // ---------- Rendering ----------
 function render() {
@@ -564,7 +564,7 @@ function renderPage() {
     } else {
       body = `<div class="tiles ${['games', 'emu', 'owned'].includes(p.type) ? 'portrait' : 'square'}">${items.map((i) => tileHtml(i, p)).join('')}${addTile}</div>`;
     }
-    const nNew = newCount();
+    const nNew = p.items.filter(isNewItem).length; // only this page's new ones
     const tools = p.items.length > 8 || nNew ? `<div class="pg-tools">
         ${p.items.length > 8 ? `<label class="pg-search"><span>🔍</span><input id="pgSearch" type="search" autocomplete="off" placeholder="${p.type === 'games' ? 'دوّر على لعبة…' : 'دوّر…'}  (Ctrl+F)" value="${esc(pageQuery.id === p.id ? pageQuery.q : '')}"><b id="pgCount"></b></label>` : ''}
         ${nNew ? `<button class="btn ghost sm new-clear" id="clearNew">✓ شيل علامة "جديد" عن الكل (${nNew})</button>` : ''}
@@ -586,7 +586,7 @@ function renderPage() {
   view.querySelectorAll('[data-item]').forEach((el) => {
     const item = p.items.find((i) => i.id === el.dataset.item);
     if (!item) return;
-    const hover = () => { if (el.classList.contains('is-new')) { markSeen([item.id]); el.classList.add('seen-now'); setTimeout(() => { el.classList.remove('is-new', 'seen-now'); el.querySelector('.new-badge')?.remove(); const c = $('#clearNew'); const n = newCount(); if (c) { if (n) c.textContent = `✓ شيل علامة "جديد" عن الكل (${n})`; else c.remove(); } }, 600); } setBackground(item.hero || item.image ? toImageUrl(item.hero || item.image) : ''); window.Music?.hoverItem(item); };
+    const hover = () => { if (el.classList.contains('is-new')) { markSeen([item.id]); el.classList.add('seen-now'); setTimeout(() => { el.classList.remove('is-new', 'seen-now'); el.querySelector('.new-badge')?.remove(); const c = $('#clearNew'); const n = document.querySelectorAll('.tile.is-new').length; if (c) { if (n) c.textContent = `✓ شيل علامة "جديد" عن الكل (${n})`; else c.remove(); } }, 600); } setBackground(item.hero || item.image ? toImageUrl(item.hero || item.image) : ''); window.Music?.hoverItem(item); };
     el.onmouseenter = hover; el.onfocus = hover;
     el.onmouseleave = () => window.Music?.leaveItems();
     // Games open their detail screen first (play, rating, settings); apps and sites open straight away
@@ -1112,6 +1112,7 @@ function addRomGame(r, quiet) {
   if (!g || !r?.file) return false;
   const all = allItems();
   if (all.some((i) => i.rom && i.rom.toLowerCase() === r.file.toLowerCase())) return false;
+  if (!quiet && data.removed) delete data.removed['rom:' + r.file.toLowerCase()]; // you added it again yourself: it comes back
   if (data.removed?.['rom:' + r.file.toLowerCase()]) return false;
   const name = cleanRomName(r.raw);
   g.items.push({ id: uid(), name, target: r.file, rom: r.file, console: r.console, platform: r.console, platformLabel: r.label,
@@ -2338,7 +2339,11 @@ window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason
   }, 26000);
   if (inElectron && !data.storesV2) setTimeout(() => { data.storesV2 = true; save(); addStores(false); }, 20000);
   if (!data.namesV2) { allItems().forEach((i) => { if (i.rom) i.name = i.name.replace(/^(.+?), (The|A|An)\b/, '$2 $1'); }); data.namesV2 = true; save(); }
-  if (!data.seenInit) { data.seen = {}; allItems().forEach((i) => { data.seen[i.id] = 1; }); data.seenInit = true; save(); }
+  if (!data.seenInit) {
+    data.seen = {}; allItems().forEach((i) => { data.seen[i.id] = 1; }); data.seenInit = true; save();
+    // first start: what the setup itself adds in the next moments (stores, your games) isn't "new" either
+    setTimeout(() => { allItems().forEach((i) => { data.seen[i.id] = 1; }); save(); render(); }, 45000);
+  }
   if (!data.artV18) { allItems().forEach((i) => { if (!i.image) delete i.artTried2; }); data.artV18 = true; save(); }
   if (!data.artV17) { allItems().forEach((i) => { if (!i.image) delete i.artTried2; }); data.artV17 = true; save(); }
   if (!data.artV16) { allItems().forEach((i) => { if (!i.image) delete i.artTried2; }); data.artV16 = true; save(); }

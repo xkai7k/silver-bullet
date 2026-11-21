@@ -702,7 +702,9 @@ function setupRoms(ctx) {
         const same = path.join(destDir, path.basename(file));
         if (fs.existsSync(same) && fs.statSync(same).size === fs.statSync(file).size) { // the same game downloaded twice: keep one copy
           try { fs.unlinkSync(file); } catch {}
-          log('already in the library', path.basename(file)); return;
+          log('already in the library', path.basename(file));
+          const again = report(same); if (again) send('rom:added', again); // if you had removed it from the library, it comes back
+          return;
         }
         final = uniq(same);
         try { fs.renameSync(file, final); } catch { fs.copyFileSync(file, final); fs.unlinkSync(file); }

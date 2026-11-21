@@ -76,6 +76,7 @@
     </div>
     <div class="sent" id="sent"></div>
     <button class="ghost" id="unmute" hidden>🔊 شغّل الصوت</button>
+    <button class="ghost" id="full">⛶ شاشة كاملة</button>
     <div class="who" id="who"></div>
   </div>
 </div>
@@ -209,6 +210,7 @@
   }
   $('#rToggle').onclick = () => req('toggle', 'إيقاف / تشغيل');
   $('#rBack').onclick = () => req('back', 'يرجّع شوي');
+  $('#full').onclick = () => { const v = $('#vid'), st = $('#stage'); if (mode === 'screen' && v.webkitEnterFullscreen && !st.requestFullscreen) return v.webkitEnterFullscreen(); (st.requestFullscreen || st.webkitRequestFullscreen || (() => v.webkitEnterFullscreen?.())).call(st); };
   $('#unmute').onclick = () => { const v = $('#vid'); v.muted = false; v.play().then(() => { $('#unmute').hidden = true; }).catch(() => {}); };
   setInterval(() => { if (state?.dur) $('#clock').textContent = `${fmt(now())} / ${fmt(state.dur)}${state.playing ? '' : ' ⏸'}`; if (mode === 'sync') syncYT(); }, 1000);
 })();
