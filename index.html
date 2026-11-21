@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data: blob: file:; media-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https: data: blob:">
+  <title>Silver Bullet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@700&family=Reem+Kufi:wght@600&family=Lalezar&family=Rakkas&family=Orbitron:wght@700&family=Press+Start+2P&family=Cinzel:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="glass">
+  <div id="scene"></div>
+  <div id="bg"><div class="bg-layer"></div><div class="bg-layer"></div><div class="bg-tint"></div></div>
+
+  <header class="topbar">
+    <button id="backBtn" class="btn ghost" hidden>→ رجوع</button>
+    <div class="titles">
+      <h1 id="title">Silver Bullet</h1>
+      <div id="subtitle"></div>
+    </div>
+    <div id="pins" title="اسحب أي لعبة أو برنامج هنا عشان تثبته"></div>
+    <div class="spacer"></div>
+    <div id="moodBar"></div>
+    <div id="spotifyBar" title="سبوتيفاي">
+      <button class="sp-logo" id="spOpen" title="افتح سبوتيفاي"><svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="11" fill="#1ed760"/><path d="M6.5 9.3c3.6-1.1 7.6-.8 10.8 1M7.2 12.3c3-.8 6.2-.5 8.8.9M7.8 15.1c2.4-.6 4.8-.4 6.9.7" stroke="#000" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></button>
+      <div class="sp-text" id="spText"><span>سبوتيفاي</span></div>
+      <button class="sp-btn" id="spPrev" title="السابقة">⏮</button>
+      <button class="sp-btn sp-play" id="spPlay" title="تشغيل / إيقاف">⏯</button>
+      <button class="sp-btn" id="spNext" title="التالية">⏭</button>
+    </div>
+    <button id="importBtn" class="btn ghost" hidden>⤓ استيراد</button>
+    <button id="emuBtn" class="btn ghost" hidden>⚙ المحاكيات</button>
+    <button id="addBtn" class="btn primary" hidden>+ إضافة</button>
+    <button id="rateBtn" class="btn ghost tb-big" title="قيّم ألعابك ورتّبها">⭐ التقييم</button>
+    <button id="helpBtn" class="btn ghost icon round tb-big" title="التعليمات: كيف تضبط كل شي">؟</button>
+    <button id="menuBtn" class="btn primary tb-big menu-btn" title="القائمة"><span class="burger"><i></i><i></i><i></i></span><span>القائمة</span></button>
+  </header>
+
+  <div id="dock">
+    <button id="micBtn" class="dock-btn" title="كلّم أكاي (Ctrl+Alt+Space)">🎙<small>أكاي</small></button>
+    <button id="themeBtn" class="dock-btn" title="الثيمات">🎨<small>الثيم</small></button>
+  </div>
+
+  <aside id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <b class="brand"><span class="brand-mark"></span>Silver Bullet</b>
+      <button class="btn ghost icon round" id="drawerClose">✕</button>
+    </div>
+    <nav id="drawerNav"></nav>
+  </aside>
+  <div id="drawerShade"></div>
+
+  <div id="voiceUI" hidden>
+    <span class="mic-dot"></span>
+    <span id="voiceText">أسمعك…</span>
+    <span class="level"><i id="voiceLevel"></i></span>
+  </div>
+
+  <div id="dropZone" hidden><div>أفلت البرنامج أو الاختصار هنا لإضافته</div></div>
+
+  <main id="view"></main>
+
+  <section id="webWrap" hidden>
+    <div class="webbar">
+      <button class="btn ghost" id="wvClose">→ رجوع</button>
+      <button class="btn ghost icon" id="wvBack" title="السابق">‹</button>
+      <button class="btn ghost icon" id="wvFwd" title="التالي">›</button>
+      <button class="btn ghost icon" id="wvReload" title="تحديث">⟳</button>
+      <span id="wvTitle"></span>
+      <span id="wvNote" class="wv-note" hidden></span>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="wvHome" title="يرجع لرابط البداية">⌂ البداية</button>
+    </div>
+    <div id="wvHost"></div>
+  </section>
+
+  <dialog id="editor">
+    <form method="dialog" id="editorForm">
+      <h2 id="editorTitle">إضافة</h2>
+      <label>الاسم<input name="name" required placeholder="مثلاً: فريندز"></label>
+      <label>الرابط أو المسار
+        <div class="row"><input name="target" required dir="ltr" placeholder="https://...  أو  C:\Games\game.exe  أو  spotify:">
+        <button type="button" class="btn ghost" data-pick="file">اختيار ملف</button></div>
+      </label>
+      <label>الصورة (اختياري)
+        <div class="row"><input name="image" dir="ltr" placeholder="رابط صورة أو ملف">
+        <button type="button" class="btn ghost" data-pick="image">اختيار صورة</button>
+        <button type="button" class="btn ghost" id="autoCover" title="يدور على صورة اللعبة تلقائياً">🔍 تلقائي</button></div>
+      </label>
+      <div class="cat-pick"><span class="lbl">التصنيفات (اختر اللي يناسب)</span>
+        <div class="cat-chips" id="catChips"></div>
+        <input type="hidden" name="categories">
+      </div>
+      <label>الكلمة الصوتية (اختياري)<input name="voice" placeholder="مثلاً: الدن رينق، القتال (افصل بفاصلة)"></label>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="editorCancel">إلغاء</button>
+        <button class="btn primary" value="save">حفظ</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="pageEditor">
+    <form method="dialog" id="pageForm">
+      <h2 id="pageEditorTitle">صفحة جديدة</h2>
+      <label>اسم الصفحة<input name="name" required placeholder="مثلاً: محاكيات"></label>
+      <div class="pe-sec"><b>الأيقونة</b>
+        <div class="pe-icons" id="peIcons"></div>
+        <div class="pe-row"><button type="button" class="btn ghost sm" id="peIconImg">🖼 صورة من جهازك</button><input name="icon" maxlength="4" placeholder="أو إيموجي" class="pe-emoji"></div>
+      </div>
+      <div class="pe-sec"><b>صورة البطاقة في الرئيسية</b>
+        <div class="pe-cover" id="peCover"></div>
+        <div class="pe-row"><button type="button" class="btn ghost sm" id="peCoverPick">🖼 اختر صورة</button><button type="button" class="btn ghost sm" id="peCoverAuto">تلقائي</button><button type="button" class="btn ghost sm" id="peCoverPlain">رسمة بدون صور</button></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="pageCancel">إلغاء</button>
+        <button class="btn primary" value="save">حفظ</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="rater">
+    <form method="dialog" id="raterForm">
+      <h2 id="raterTitle">تقييم</h2>
+      <div class="avg-big"><span id="raterAvg">–</span><small>/10</small></div>
+      <div id="raterRows"></div>
+      <div class="row add-crit">
+        <input id="newCrit" placeholder="معيار جديد (مثلاً: الأداء)">
+        <button type="button" class="btn ghost" id="addCrit">+ إضافة</button>
+      </div>
+      <label>ملاحظة (اختياري)<textarea id="raterNote" rows="2" placeholder="رأيك باللعبة…"></textarea></label>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="raterCancel">إلغاء</button>
+        <button type="button" class="btn ghost danger-text" id="raterClear">مسح التقييم</button>
+        <button class="btn primary" value="save">حفظ</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="themePicker">
+    <h2>اختر الثيم</h2>
+    <div class="theme-grid" id="themeGrid"></div>
+    <div class="actions"><button type="button" class="btn ghost" id="themeClose">تم</button></div>
+  </dialog>
+
+  <dialog id="emuDialog">
+    <h2>المحاكيات</h2>
+    <p class="hint">لكل منصة: اختر برنامج المحاكي ومجلد الألعاب، والبرنامج يجيب الألعاب وصورها تلقائياً.</p>
+    <div id="emuList"></div>
+    <p class="hint">العب أي لعبة بدون ما تفتح محاكي: نزّل اللعبة (حتى لو مضغوطة) وتنضاف لحالها لصفحة الألعاب، وأول ما تفتحها يشتغل المحاكي المناسب على طول بملء الشاشة.</p>
+    <div class="row-btns"><button type="button" class="btn ghost" id="emuGames">📁 مجلد الألعاب</button><button type="button" class="btn ghost" id="emuBios">🧩 مجلد BIOS</button></div>
+    <button type="button" class="btn ghost" id="emuTorrent">🧲 حمّل لعبة من تورنت</button>
+    <button type="button" class="btn primary" id="emuGet">⬇ حمّل المحاكيات المعروفة (اللي ناقصة)</button>
+    <button type="button" class="btn ghost" id="emuDiscover">🔍 دوّر على المحاكيات والألعاب في جهازي</button>
+    <div id="emuFound"></div>
+    <form id="emuForm">
+      <h3 id="emuFormTitle">إضافة منصة</h3>
+      <label>المنصة<select name="platform" id="emuPlatform"></select></label>
+      <label>برنامج المحاكي (exe)
+        <div class="row"><input name="exe" dir="ltr" required placeholder="C:\Program Files\PCSX2\pcsx2-qt.exe">
+        <button type="button" class="btn ghost" id="emuPickExe">اختيار</button></div>
+      </label>
+      <label>مجلد الألعاب
+        <div class="row"><input name="romDir" dir="ltr" required placeholder="D:\Games\PS2">
+        <button type="button" class="btn ghost" id="emuPickDir">اختيار</button></div>
+      </label>
+      <details>
+        <summary>إعدادات متقدمة</summary>
+        <label>امتدادات الملفات<input name="exts" dir="ltr"></label>
+        <label>أوامر التشغيل ({rom} = مسار اللعبة)<input name="args" dir="ltr"></label>
+      </details>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="emuClose">إغلاق</button>
+        <button class="btn primary">حفظ وجلب الألعاب</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings">
+    <h2>الإعدادات</h2>
+    <div class="tabs"><button type="button" class="tab on" data-tab="general">عام</button><button type="button" class="tab" data-tab="moods">المودات</button><button type="button" class="tab" data-tab="controls">التحكم</button></div>
+    <div id="setMoods" hidden></div>
+    <div id="setControls" hidden></div>
+    <div id="setGeneral">
+    <label>اسمك (يناديك فيه البرنامج)<input id="setName" maxlength="24" placeholder="اسمك"></label>
+    <label class="check"><input type="checkbox" id="setWakeOn"> نادِ أكاي بصوتك بدل زر المايك</label>
+    <p class="hint">قل "أكاي" وبعدها طلبك على طول (مثلاً "أكاي سبوتيفاي")، أو قل "أكاي" لحاله وانتظره يطل عليك. كل شي يصير على جهازك وما يطلع للنت.</p>
+    <label>دقة التعرف على الصوت
+      <select id="setVoiceModel">
+        <option value="small">أدق بالعربي (الافتراضي)</option>
+        <option value="base">أسرع وأخف</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="setAutostart"> شغّل Silver Bullet تلقائياً مع ويندوز</label>
+    <label>إضاءة البرنامج <input type="range" id="setBright" min="40" max="130" step="5"></label>
+    <div class="set-row"><span>خلفية من عندك (صورة أو فيديو)</span><button type="button" class="btn ghost sm" id="setBgPick">اختر…</button><button type="button" class="btn ghost sm" id="setBgClear">بدون</button></div>
+    <label class="check"><input type="checkbox" id="setAfk"> إذا ما لمست شي ١٥ دقيقة، تختفي القوائم ويبقى المنظر المتحرك (يرجع أول ما تحرك الماوس أو اليد)</label>
+    <label class="check"><input type="checkbox" id="setArtStrong"> صورة اللعبة تغطي الخلفية بالكامل (بدل ما تكون خفيفة فوق تصميم الثيم)</label>
+    <p class="hint">أول مرة تستخدم الصوت ينزّل نموذج التعرف مرة وحدة، وبعدها يشتغل بدون نت.<br>
+      اختصار الصوت من أي مكان: <b dir="ltr">Ctrl + Alt + Space</b></p>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn ghost" id="settingsClose">تم</button>
+      <button type="button" class="btn ghost" id="voiceTest">🎙 جرّب الصوت</button>
+    </div>
+  </dialog>
+
+  <div id="disc" title="ألحان الخلفية">
+    <div class="disc-info">
+      <div class="disc-top"><span class="disc-eq"><i></i><i></i><i></i><i></i></span><span class="disc-title"></span><button class="disc-more" title="خيارات الألحان">⋯</button></div>
+      <label class="disc-vol"><span>🔈</span><input type="range" min="0" max="100" step="1" class="disc-vol-range" aria-label="صوت الألحان"><span>🔊</span></label>
+    </div>
+    <div class="disc-deck">
+      <div class="disc-platter"><div class="disc-vinyl"><div class="disc-grooves"></div><div class="disc-label"><i></i></div></div></div>
+      <div class="disc-arm"><i class="arm-base"></i><i class="arm-rod"></i><i class="arm-head"></i></div>
+      <i class="disc-led"></i><i class="disc-knob"></i>
+    </div>
+  </div>
+
+  <div id="ctx" class="ctx" hidden></div>
+  <div id="toast"></div>
+  <script src="scenes.js"></script>
+  <script src="pageart.js"></script>
+  <script src="app.js"></script>
+  <script src="calendar.js"></script>
+  <script src="music.js"></script>
+  <script src="nav.js"></script>
+  <script src="shots.js"></script>
+  <script src="card.js"></script>
+  <script src="help.js"></script>
+  <script src="series.js"></script>
+  <script src="sb.js"></script>
+  <script src="akai.js"></script>
+  <script src="pad.js"></script>
+  <script src="voice.js"></script>
+</body>
+</html>

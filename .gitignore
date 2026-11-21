@@ -1,0 +1,12 @@
+node_modules/
+*.log
+preview-log.txt
+preview-log.txt.old
+preview-snap.png
+snap-request.txt
+install-log.txt
+bios/
+BIOS/
+Mods/
+Tools/
+*.keys
