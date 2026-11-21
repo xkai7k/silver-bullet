@@ -802,6 +802,32 @@ function setupRoms(ctx) {
     }
   }
   try { removeDuplicateCopies(); } catch {}
+  // ---------- Retro Project: games downloaded there show up here too, right where they are (nothing is copied) ----------
+  const RETRO_ROOTS = ['C:\\Retro Project', 'D:\\Retro Project'].filter((d) => fs.existsSync(d));
+  const RETRO_SKIP = /^(Playnite|Retro Books|PC Game|Downloadable-Content|_.*)$/i;
+  function retroFiles() {
+    const all = [];
+    for (const root of RETRO_ROOTS) {
+      let ents = []; try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
+      for (const e of ents) {
+        if (!e.isDirectory() || RETRO_SKIP.test(e.name)) continue;
+        (function walk(dd, depth) {
+          let xs = []; try { xs = fs.readdirSync(dd, { withFileTypes: true }); } catch { return; }
+          for (const x of xs) { const f = path.join(dd, x.name); if (x.isDirectory()) { if (depth < 3) walk(f, depth + 1); } else if (ROM_EXT.test(x.name) || /\.(bin|img)$/i.test(x.name)) all.push(f); }
+        })(path.join(root, e.name), 0);
+      }
+    }
+    return mainFiles(all);
+  }
+  for (const root of RETRO_ROOTS) {
+    try {
+      fs.watch(root, { recursive: true }, (_ev, name) => {
+        if (!name || RETRO_SKIP.test(String(name).split(/[\\/]/)[0])) return;
+        if (ROM_EXT.test(name) || ARCHIVE.test(name)) settle(path.join(root, name), false);
+      });
+      log('watching Retro Project', root);
+    } catch (e) { log('retro watch failed', e.message); }
+  }
   // Everything already in the Games folder (startup sync)
   ipcMain.handle('roms:list', () => {
     const all = [];
@@ -809,7 +835,7 @@ function setupRoms(ctx) {
       let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
       for (const x of ents) { const f = path.join(d, x.name); if (x.isDirectory()) { if (depth < 4 && !x.name.startsWith('_')) walk(f, depth + 1); } else all.push(f); }
     })(GAMES, 0);
-    const list = mainFiles(all).map(report).filter(Boolean);
+    const list = [...mainFiles(all), ...retroFiles()].map(report).filter(Boolean);
     for (const x of list) knownRoms.add(x.file.toLowerCase());
     return { games: GAMES, bios: BIOS, list };
   });

@@ -1142,7 +1142,14 @@ function addRomGame(r, quiet) {
   const g = page('games') || data.pages.find((p) => p.type === 'games');
   if (!g || !r?.file) return false;
   const all = allItems();
-  if (all.some((i) => i.rom && i.rom.toLowerCase() === r.file.toLowerCase())) return false;
+  const key = r.file.toLowerCase();
+  if (all.some((i) => i.rom && i.rom.toLowerCase() === key)) return false;
+  const same = all.find((i) => !i.rom && String(i.target || '').toLowerCase() === key); // added before by its path: it just learns it's a console game
+  if (same) { same.rom = r.file; same.console ||= r.console; same.platform ||= r.console; save(); return false; }
+  // a shortcut that opened this game through another launcher's emulator (Retro Project / Playnite): it becomes this game
+  const nm = cleanRomName(r.raw).toLowerCase();
+  const alias = all.find((i) => !i.rom && /\\emulators?\\|playnite/i.test(i.target || '') && /\.exe$/i.test(i.target || '') && i.name.toLowerCase() === nm);
+  if (alias) { alias.rom = r.file; alias.target = r.file; alias.console = r.console; alias.platform = r.console; alias.platformLabel = r.label; save(); return false; }
   if (!quiet && data.removed) delete data.removed['rom:' + r.file.toLowerCase()]; // you added it again yourself: it comes back
   if (data.removed?.['rom:' + r.file.toLowerCase()]) return false;
   const name = cleanRomName(r.raw);
@@ -2374,6 +2381,23 @@ window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason
   try { paths = await pv.paths(); } catch {}
   try { drawAvatar(); applyPlugins(); } catch (e) { pv.log('look init: ' + e.message); }
   if (!data.genresV2) { allItems().forEach((i) => { delete i.genres; delete i.genresTried; }); data.genresV2 = true; save(); } // better names for Steam's "Casual" / "Indie"
+  { // a game added twice (once by its path, once as a console game): keep the first, with its picture and play time
+    const byPath = new Map(); let gone = 0;
+    for (const p of data.pages) p.items = p.items.filter((i) => { const k = String(i.rom || i.target || '').toLowerCase(); if (!k || !/\.(iso|chd|cue|nsp|xci|rvz|wbfs|cso|gcm|bin|wua)$/.test(k)) return true; const first = byPath.get(k); if (!first) { byPath.set(k, i); return true; } if (!first.rom && i.rom) first.rom = i.rom; first.playtime = (first.playtime || 0) + (i.playtime || 0); gone++; return false; });
+    // the same game as an emulator shortcut (from Retro Project) and as a console game: one tile, using our launcher
+    for (const p of data.pages) {
+      const roms = p.items.filter((i) => i.rom);
+      p.items = p.items.filter((i) => {
+        if (i.rom || !/\.exe$/i.test(i.target || '') || !/\\emulators?\\|playnite/i.test(i.target || '')) return true;
+        const twin = roms.find((x) => x.name.toLowerCase() === i.name.toLowerCase());
+        if (!twin) return true;
+        if (i.image && (!twin.image || twin.noArt)) { twin.image = i.image; delete twin.noArt; } if (i.hero) twin.hero ||= i.hero;
+        twin.playtime = (twin.playtime || 0) + (i.playtime || 0); if (i.ratings && !twin.ratings) twin.ratings = i.ratings;
+        gone++; return false;
+      });
+    }
+    if (gone) { save(); pv.log(`removed ${gone} doubled games`); }
+  }
   setTimeout(() => fillGenres(), 20000); setInterval(() => fillGenres(), 10 * 60 * 1000);
   const mods = page('mods');
   if (mods && paths.mods && !mods.items.some((i) => i.target === paths.mods) && !data.removed?.['t:' + paths.mods.toLowerCase()]) {
