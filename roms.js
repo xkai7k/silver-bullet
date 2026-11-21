@@ -633,7 +633,50 @@ function setupRoms(ctx) {
     const con = classify(file);
     if (!con || !CONSOLES[con]) return null;
     const c = CONSOLES[con];
-    return { file, console: con, label: c.label, thumbs: c.thumbs, raw: path.basename(file).replace(/\.[^.]+$/, '') };
+    let raw = path.basename(file).replace(/\.[^.]+$/, '');
+    if (/^[\d\s._-]+$/.test(raw)) raw = discTitle(file, con) || raw; // "02602.iso" → the game's real name from the disc itself
+    return { file, console: con, label: c.label, thumbs: c.thumbs, raw };
+  }
+  // A disc named only with numbers (packs like Retro Project do that): read its serial (SLUS-20946…) and look it up
+  // in the game list PCSX2 / DuckStation ship with
+  const titleMemo = new Map(); let ps2Index = null;
+  function discSerial(file) {
+    let fd; try {
+      fd = fs.openSync(file, 'r');
+      const pvd = readAt(fd, 16 * 2048, 2048);
+      if (pvd.toString('latin1', 1, 6) !== 'CD001') return null;
+      const lba = pvd.readUInt32LE(156 + 2), len = pvd.readUInt32LE(156 + 10);
+      const dir = readAt(fd, lba * 2048, Math.min(len, 65536));
+      for (let o = 0; o < dir.length;) {
+        const rl = dir[o]; if (!rl) { o = (Math.floor(o / 2048) + 1) * 2048; continue; }
+        const nl = dir[o + 32], name = dir.toString('latin1', o + 33, o + 33 + nl);
+        if (/^SYSTEM\.CNF/i.test(name)) {
+          const at = dir.readUInt32LE(o + 2), sz = dir.readUInt32LE(o + 10);
+          const txt = readAt(fd, at * 2048, Math.min(sz, 4096)).toString('latin1');
+          const m = /(?:BOOT2?)\s*=\s*cdrom0?:\\?([A-Z]{4})[_-](\d{3})\.(\d{2})/i.exec(txt);
+          return m ? `${m[1].toUpperCase()}-${m[2]}${m[3]}` : null;
+        }
+        o += rl;
+      }
+    } catch {} finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
+    return null;
+  }
+  function discTitle(file, con) {
+    if (titleMemo.has(file)) return titleMemo.get(file);
+    let name = null;
+    try {
+      if (con === 'ps2') {
+        const serial = discSerial(file);
+        if (serial) {
+          if (ps2Index === null) { ps2Index = ''; const exe = emuExe('pcsx2'); for (const f of exe ? [path.join(path.dirname(exe), 'resources', 'GameIndex.yaml')] : []) { try { ps2Index = fs.readFileSync(f, 'utf8'); } catch {} } }
+          const m = ps2Index && new RegExp(`^${serial}:\\s*\\n\\s*name:\\s*"?([^"\\n]+)`, 'm').exec(ps2Index);
+          name = m ? m[1].trim() : serial;
+          log('disc name', path.basename(file), serial, name);
+        }
+      }
+    } catch (e) { log('disc name failed', e.message); }
+    titleMemo.set(file, name);
+    return name;
   }
   function uniq(p) { let q = p, i = 2; while (fs.existsSync(q)) { q = p.replace(/(\.[^.\\/]+)?$/, ` (${i++})$1`); } return q; }
   async function listArchive(file) {
@@ -653,6 +696,7 @@ function setupRoms(ctx) {
     });
   }
   const handled = new Set(); // file|size|time: the same download is only taken once
+  const knownRoms = new Set(); // games already in the library (so a touched file isn't "added" again)
   async function importFile(file, fromDownloads) {
     if (busy.has(file)) return;
     let key = file;
@@ -710,8 +754,9 @@ function setupRoms(ctx) {
         try { fs.renameSync(file, final); } catch { fs.copyFileSync(file, final); fs.unlinkSync(file); }
         for (const x of extra) { const s = path.join(path.dirname(file), x); if (fs.existsSync(s)) try { fs.renameSync(s, path.join(destDir, x)); } catch {} }
       } else if (/\.(bin|img)$/i.test(file) && mainFiles(fs.readdirSync(path.dirname(file)).map((x) => path.join(path.dirname(file), x))).indexOf(file) < 0) return;
+      if (!fromDownloads && knownRoms.has(final.toLowerCase())) return; // already in the library: an emulator just touched the file
       const out = report(final);
-      if (out) { send('rom:added', out); log('game added', out.console, out.file); }
+      if (out) { knownRoms.add(final.toLowerCase()); send('rom:added', out); log('game added', out.console, out.file); }
     } catch (err) { log('import failed', file, err.message); } finally { busy.delete(file); }
   }
   // A download is finished when its size stops changing
@@ -764,7 +809,9 @@ function setupRoms(ctx) {
       let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
       for (const x of ents) { const f = path.join(d, x.name); if (x.isDirectory()) { if (depth < 4 && !x.name.startsWith('_')) walk(f, depth + 1); } else all.push(f); }
     })(GAMES, 0);
-    return { games: GAMES, bios: BIOS, list: mainFiles(all).map(report).filter(Boolean) };
+    const list = mainFiles(all).map(report).filter(Boolean);
+    for (const x of list) knownRoms.add(x.file.toLowerCase());
+    return { games: GAMES, bios: BIOS, list };
   });
   // "Standard buttons": Wii U games on Cemu use Nintendo's layout (A on the right). Swap A/B and X/Y in its
   // controller profile once, so the bottom button (A / ✕) confirms and the right one (B / ○) goes back.
@@ -792,6 +839,22 @@ function setupRoms(ctx) {
     return { cemu: done };
   });
   ipcMain.handle('bios:status', () => ({ ps1: placeBios('ps1'), ps2: placeBios('ps2'), switchKeys: placeSwitchKeys(), switchFw: switchFirmware(), dir: BIOS, games: GAMES }));
+  // Settings → "المفاتيح والبايوس": drop keys / firmware / BIOS files and they go where every emulator looks
+  ipcMain.handle('bios:add', async (_e, files) => {
+    const dir = (ctx.extraBios || []).find((d) => fs.existsSync(d)) || BIOS;
+    fs.mkdirSync(dir, { recursive: true });
+    const got = [];
+    for (const f of files || []) {
+      try {
+        const to = path.join(dir, path.basename(f));
+        if (fs.statSync(f).isDirectory()) fs.cpSync(f, to, { recursive: true, force: true }); else fs.copyFileSync(f, to);
+        got.push(path.basename(f));
+      } catch (err) { log('bios add failed', f, err.message); }
+    }
+    const keys = placeSwitchKeys(); installSwitchFirmware();
+    log('bios added', got.join(', '));
+    return { got, dir, ps1: placeBios('ps1'), ps2: placeBios('ps2'), switchKeys: keys };
+  });
   ipcMain.handle('rom:import', (_e, file) => {
     // archives and compressed Switch games need unpacking / converting first: that runs in the background and the game shows up when it's ready
     if (ARCHIVE.test(file) || /\.(nsz|xcz)$/i.test(file)) { importFile(file, false); return { pending: true, name: path.basename(file) }; }

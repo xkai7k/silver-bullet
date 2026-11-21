@@ -138,6 +138,18 @@
   const AKAI = ['اكاي', 'عكاي', 'اكايي', 'اكايه', 'هكاي', 'اكاى', 'اكي', 'اكاي ي', 'ياكاي', 'كاي', 'akai', 'akay', 'acai', 'aki'];
   function wakeMatch(text) {
     const words = normAr(String(text).replace(/a\s+kai/ig, 'akai')).split(' ').filter(Boolean);
+    // a name you chose for him (Settings): matched by sound, at the start of the sentence
+    const own = normAr(data.settings?.akaiName || '').replace(/\s/g, '');
+    if (own && !/^(اكاي|akai)$/i.test(own)) {
+      if (words.length >= 3 && new Set(words).size <= Math.ceil(words.length / 3)) return null;
+      for (let i = 0; i < Math.min(2, words.length); i++) {
+        const w = words[i].replace(/^(يا|و|ف)(?=..)/, '');
+        const two = (w + (words[i + 1] || '')).replace(/\s/g, '');
+        if (w === own || (own.length >= 3 && phraseScore(w, own) >= 0.82)) return words.slice(i + 1).join(' ');
+        if (words[i + 1] && phraseScore(two, own) >= 0.88) return words.slice(i + 2).join(' ');
+      }
+      return null;
+    }
     // the name has to open the sentence (first two words), so normal talking in the room doesn't wake him
     // the same word over and over ("ايه؟ ايه؟ ايه؟…") is the speech model imagining things in the noise
     if (words.length >= 3 && new Set(words).size <= Math.ceil(words.length / 3)) return null;
@@ -156,7 +168,7 @@
     try {
       const c = new AudioContext(), o = c.createOscillator(), g = c.createGain();
       o.frequency.setValueAtTime(880, c.currentTime); o.frequency.setValueAtTime(1320, c.currentTime + 0.08);
-      g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(0.12, c.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.3);
+      g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.12 * (data.settings?.dingVol ?? 1)), c.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.3);
       o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + 0.32); setTimeout(() => c.close(), 500);
     } catch {}
   }
@@ -184,9 +196,16 @@
           const out = await asr(audio, { language: 'arabic', task: 'transcribe' });
           const text = (Array.isArray(out) ? out[0]?.text : out?.text || '').trim();
           if (text && data.settings?.voiceDebug) pv.log(`voice heard: ${text}`);
-          if (!document.hasFocus() || document.body.classList.contains('playing-video')) return; // you're in a game / another window: sounds from there don't wake him
+          if (document.body.classList.contains('playing-video')) return;
           const rest = text && wakeMatch(text);
           if (rest === null || rest === undefined) return;
+          // outside the app: only the music (skip, back, pause, volume), and nothing at all while a game is running
+          if (!document.hasFocus()) {
+            if (await pv.gameRunning?.().catch(() => false)) return;
+            const mv = rest && window.musicVoice?.(rest);
+            if (mv) { ding(); pv.log(`voice (outside): ${text} → ${mv.msg}`); window.Akai?.say(mv.msg, 'happy'); pv.notify?.(mv.msg); }
+            return;
+          }
           pv.log(`voice: wake word heard ("${text}")`);
           ding();
           if (rest.replace(/\s/g, '').length >= 2) { respond(rest); hideLater(); }

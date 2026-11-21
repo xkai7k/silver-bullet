@@ -73,29 +73,48 @@
     pirate: '<path d="M32 58 Q34 22 80 20 Q126 22 128 58 Q80 44 32 58 Z" fill="#b3261e"/><circle cx="62" cy="38" r="3" fill="#fff"/><circle cx="96" cy="34" r="3" fill="#fff"/><path d="M124 50 L146 62 L132 68 Z" fill="#b3261e"/>',
     cyber: '<rect x="44" y="76" width="72" height="14" rx="7" fill="rgba(0,240,255,.35)" stroke="#fcee0a" stroke-width="2"/>',
     arcade: '<path d="M44 38 L52 18 L64 30 L80 12 L96 30 L108 18 L116 38 Z" fill="#ffd400"/>',
+    // the rest of the themes get their own look too
+    glass: '<path d="M34 60 Q34 18 80 16 Q126 18 126 60 Q80 48 34 60 Z" fill="#5a7bd8"/><path d="M34 60 Q80 48 126 60 L126 66 Q80 54 34 66 Z" fill="#3c58a8"/><circle cx="80" cy="14" r="7" fill="#9db4ff"/>',
+    aero: '<path d="M46 84 Q46 74 60 74 Q72 74 72 84 Q72 94 60 94 Q46 94 46 84 Z M88 84 Q88 74 100 74 Q114 74 114 84 Q114 94 100 94 Q88 94 88 84 Z" fill="rgba(80,220,255,.55)" stroke="#e8fbff" stroke-width="2.4"/><path d="M72 82 Q80 78 88 82" stroke="#e8fbff" stroke-width="2.4" fill="none"/>',
+    calm: '<path d="M34 62 Q32 18 80 16 Q128 18 126 62 Q80 50 34 62 Z" fill="#7fa88a"/><path d="M34 62 Q80 50 126 62 L126 70 Q80 58 34 70 Z" fill="#5e8a6b"/><path d="M44 40 L116 40 M40 50 L120 50" stroke="rgba(255,255,255,.18)" stroke-width="3"/>',
+    classic: '<path d="M36 56 Q36 22 80 20 Q124 22 124 56 Z" fill="#6b6f7a"/><path d="M36 56 L20 62 Q60 50 124 56 Z" fill="#4c4f57"/><rect x="74" y="20" width="12" height="4" fill="#c0c0c0"/>',
+    miami: '<path d="M44 80 L74 78 L72 92 Q60 98 48 92 Z M86 78 L116 80 L112 92 Q100 98 88 92 Z" fill="#2b1035"/><path d="M44 80 L116 80" stroke="#ff4fa3" stroke-width="2.6"/><path d="M48 84 L70 84" stroke="#ffb86b" stroke-width="2"/>',
+    blocks: '<rect x="32" y="14" width="96" height="44" fill="#6a8f3a"/><rect x="32" y="14" width="96" height="12" fill="#7fb04a"/><rect x="44" y="26" width="10" height="10" fill="#557a2c"/><rect x="96" y="32" width="12" height="10" fill="#557a2c"/><rect x="70" y="40" width="10" height="10" fill="#8a6b45"/>',
   };
   function dressForTheme() {
     const t = (typeof data !== 'undefined' && data.theme) || 'glass';
     const back = t === 'najdi';
-    el.querySelector('.ak-acc-front').innerHTML = back ? (ACC[t + 'Front'] || '') : (ACC[t] || '');
-    el.querySelector('.ak-acc-back').innerHTML = back ? ACC[t] : '';
+    for (const root of [el, mini]) {
+      if (!root) continue;
+      root.querySelector('.ak-acc-front').innerHTML = back ? (ACC[t + 'Front'] || '') : (ACC[t] || '');
+      root.querySelector('.ak-acc-back').innerHTML = back ? ACC[t] : '';
+    }
     el.dataset.theme = t;
   }
+  // ---------- his seat: bottom-left, where the mic button was. Click him to talk ----------
+  const seat = document.getElementById('micBtn');
+  const mini = el.querySelector('.ak-face').cloneNode(true);
+  mini.classList.remove('ak-face'); mini.classList.add('ak-mini');
+  if (seat) { seat.classList.add('akai-seat'); seat.innerHTML = ''; seat.appendChild(mini); const lb = document.createElement('small'); lb.className = 'ak-name'; seat.appendChild(lb); }
+  const nameOf = () => (typeof data !== 'undefined' && data.settings?.akaiName) || 'أكاي';
+  function seatSync() { const lb = seat?.querySelector('.ak-name'); if (lb) lb.textContent = nameOf(); if (seat) seat.title = `كلّم ${nameOf()} (Ctrl+Alt+Space)`; dressForTheme(); }
+  setTimeout(seatSync, 1500);
   // ---------- showing up ----------
-  const SPOTS = ['br', 'r', 'l']; // never over the top bar or the bottom-left buttons, so he can't sit on something you want to press
+  const SPOTS = ['bl']; // he lives bottom-left, right above his seat
   let hideT = 0, sulk = 0;
   function peek(face = 'idle', text = '', ms = 3800) {
     dressForTheme();
     clearTimeout(hideT);
-    if (!el.classList.contains('in')) { const busy = document.querySelector('#lowBat.show'); const ok = SPOTS.filter((x) => !(busy && x === 'bl')); el.dataset.spot = ok[Math.floor(Math.random() * ok.length)]; }
+    el.dataset.spot = SPOTS[0];
     el.dataset.face = face;
     bubble.textContent = text;
     bubble.hidden = !text;
     el.classList.add('in');
     if (text && face !== 'sulk') { el.classList.add('talk'); setTimeout(() => el.classList.remove('talk'), Math.min(1800, 120 * text.length)); }
-    if (ms) hideT = setTimeout(() => el.classList.remove('in'), ms);
+    seat?.classList.add('away');
+    if (ms) hideT = setTimeout(() => { el.classList.remove('in'); seat?.classList.remove('away'); }, ms);
   }
-  const hide = () => { clearTimeout(hideT); el.classList.remove('in'); };
+  const hide = () => { clearTimeout(hideT); el.classList.remove('in'); seat?.classList.remove('away'); };
 
   // ---------- mood words (kept simple on purpose) ----------
   const norm = (s) => (typeof normAr === 'function' ? normAr(s) : String(s).toLowerCase());
@@ -129,8 +148,10 @@
       peek('happy', h < 5 ? `سهران${n ? ' يا ' + n : ''}؟ 🌙` : h < 12 ? `صباح الخير${n ? ' ' + n : ''} ☀️` : `هلا${n ? ' ' + n : ''} 👋`, 3400);
     },
     isSulking: () => sulk > 0,
+    sync: seatSync,
+    get name() { return nameOf(); },
   };
   // Blink now and then
   setInterval(() => { if (el.classList.contains('in') && el.dataset.face !== 'sulk') { el.classList.add('blink'); setTimeout(() => el.classList.remove('blink'), 140); } }, 2600);
-  el.onclick = () => (sulk > 0 ? peek('sulk', 'لا تكلمني 😤', 2500) : peek('happy', 'وش تبي؟ قل "أكاي" وبعدها طلبك 😄', 3200));
+  el.onclick = () => (sulk > 0 ? peek('sulk', 'لا تكلمني 😤', 2500) : peek('happy', `وش تبي؟ قل "${nameOf()}" وبعدها طلبك 😄`, 3200));
 })();

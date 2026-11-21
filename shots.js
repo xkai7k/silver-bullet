@@ -126,42 +126,79 @@
     // The gallery page: tabs for game captures and every photo / video on the PC, sorted by kind
     async renderGallery(viewEl) {
       const tab = window._galTab || 'games';
-      const tabs = `<div class="chips"><button class="chip ${tab === 'games' ? 'on' : ''}" data-g="games">🎮 لقطات الألعاب</button><button class="chip ${tab === 'all' ? 'on' : ''}" data-g="all">🖼 كل صوري ومقاطعي</button></div>`;
-      const wireTabs = () => viewEl.querySelectorAll('[data-g]').forEach((b) => b.onclick = () => { window._galTab = b.dataset.g; this.renderGallery(viewEl); });
+      const view = window._galView || 'grid', sort = window._galSort || 'new', kind = window._galKind || 'all';
+      const chip = (k, v, label, cur) => `<button class="chip ${cur === v ? 'on' : ''}" data-${k}="${v}">${label}</button>`;
+      const tabs = `<div class="chips">${chip('g', 'games', '🎮 لقطات الألعاب', tab)}${chip('g', 'all', '🖼 كل صوري ومقاطعي', tab)}</div>
+        <div class="gal-tools"><div class="seg">${chip('v', 'grid', '▦ شبكة', view)}${chip('v', 'list', '☰ قائمة بالأحجام', view)}</div>
+        <div class="seg">${chip('s', 'new', 'الأحدث', sort)}${chip('s', 'old', 'الأقدم', sort)}${chip('s', 'big', 'الأكبر حجماً', sort)}</div>
+        <div class="seg">${chip('k', 'all', 'الكل', kind)}${chip('k', 'img', '📷 صور', kind)}${chip('k', 'vid', '🎬 مقاطع', kind)}</div></div>`;
+      const wireTabs = () => {
+        viewEl.querySelectorAll('[data-g]').forEach((b) => b.onclick = () => { window._galTab = b.dataset.g; this.renderGallery(viewEl); });
+        viewEl.querySelectorAll('[data-v]').forEach((b) => b.onclick = () => { window._galView = b.dataset.v; this.renderGallery(viewEl); });
+        viewEl.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => { window._galSort = b.dataset.s; this.renderGallery(viewEl); });
+        viewEl.querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { window._galKind = b.dataset.k; this.renderGallery(viewEl); });
+      };
+      const pick = (l) => l.filter((x) => kind === 'all' || (kind === 'vid' ? x.video : !x.video));
+      const order = (l) => pick(l).slice().sort((a, b) => sort === 'old' ? a.t - b.t : sort === 'big' ? (b.s || 0) - (a.s || 0) : b.t - a.t);
+      const size = (b) => !b ? '' : b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
+      const when = (t) => new Date(t).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short', year: 'numeric' });
+      // groups: [{ name, files }]
+      let groups;
       if (tab === 'all') {
         viewEl.innerHTML = tabs + '<div class="empty">أجمع صورك من الجهاز…</div>'; wireTabs();
         const cats = await pv.photosScan();
         if (window._galTab !== 'all') return;
-        if (!cats.length) { viewEl.innerHTML = tabs + '<div class="empty">ما لقيت صور في مجلداتك المعتادة.</div>'; wireTabs(); return; }
-        viewEl.innerHTML = tabs + cats.map((c, n) => `<div class="g-row" data-c="${n}"><div class="group-title">${esc(c.name)} <small>${c.total}</small><span class="spacer"></span><button class="btn ghost sm" data-ph="${n}">📲 للجوال</button></div>
-          <div class="d-shots-row big">${c.files.slice(0, 14).map(thumb).join('')}${c.files.length > 14 ? `<button class="shot more" data-i="14">+${c.total - 14}</button>` : ''}</div></div>`).join('');
+        groups = cats.map((c) => ({ name: c.name, files: c.files }));
+      } else {
+        viewEl.innerHTML = tabs + '<div class="empty">أجمع لقطاتك…</div>'; wireTabs();
+        await scan();
+        groups = gameItems().filter((i) => (shots[i.id] || []).length).map((i) => ({ name: i.name, files: shots[i.id] }));
+      }
+      groups = groups.map((g) => ({ ...g, files: order(g.files) })).filter((g) => g.files.length);
+      if (!groups.length) {
+        viewEl.innerHTML = tabs + `<div class="empty">${tab === 'all' ? 'ما لقيت صور في مجلداتك المعتادة.' : 'ما لقيت لقطات ألعاب للحين. البرنامج يجمعها من ستيم وNVIDIA وMedal وXbox Game Bar تلقائياً حسب اللعبة.'}</div>`; wireTabs();
+        return;
+      }
+      const all = groups.flatMap((g) => g.files.map((f) => ({ ...f, game: g.name })));
+      const totalSize = all.reduce((a, f) => a + (f.s || 0), 0);
+      groups.sort((a, b) => sort === 'big' ? b.files.reduce((x, f) => x + (f.s || 0), 0) - a.files.reduce((x, f) => x + (f.s || 0), 0) : sort === 'old' ? a.files[0].t - b.files[0].t : b.files[0].t - a.files[0].t);
+      const head = `<div class="gallery-head"><span>${all.length} ملف · ${size(totalSize)}</span>${tab === 'games' ? '<button class="btn primary" id="phoneAll">📲 انقل الكل للجوال</button>' : ''}</div>`;
+
+      if (view === 'list') { // every file in one list, like the Space tab: see the biggest, delete from here
+        const flat = order(all);
+        const shown = flat.slice(0, 400);
+        viewEl.innerHTML = tabs + head + `<div class="gl-bar"><label><input type="checkbox" id="glAll"> حدد الكل</label><span id="glSel"></span><button class="btn danger sm" id="glDel" disabled>🗑 احذف المحدد</button></div>
+          <div class="gl-list">${shown.map((f, i) => `<div class="gl-row" data-i="${i}"><input type="checkbox" data-c="${i}"><button class="gl-th" data-o="${i}">${f.video ? `<video src="${fileUrl(f.f)}#t=1" preload="metadata" muted></video><span>▶</span>` : `<img src="${fileUrl(f.f)}" loading="lazy" alt="">`}</button>
+            <span class="gl-name" title="${esc(f.f)}"><b dir="auto">${esc(f.f.split(/[\\/]/).pop())}</b><small>${esc(f.game)} · ${when(f.t)}</small></span><span class="gl-size">${size(f.s)}</span><button class="btn ghost sm" data-del="${i}" title="للسلة">🗑</button></div>`).join('')}</div>
+          ${flat.length > shown.length ? `<p class="hint">يعرض أول ${shown.length} من ${flat.length}.</p>` : ''}`;
         wireTabs();
-        viewEl.querySelectorAll('.g-row').forEach((row) => {
-          const c = cats[Number(row.dataset.c)];
-          row.querySelectorAll('.shot').forEach((b) => b.onclick = () => open(c.files, Number(b.dataset.i), c.name));
-          row.querySelector('[data-ph]').onclick = () => sendToPhone([{ game: c.name, files: c.files.slice(0, 200) }], c.name);
-        });
+        viewEl.querySelector('#phoneAll')?.addEventListener('click', () => sendToPhone(allGroups()));
+        const sel = new Set();
+        const sync = () => { viewEl.querySelector('#glDel').disabled = !sel.size; viewEl.querySelector('#glSel').textContent = sel.size ? `${sel.size} محدد · ${size([...sel].reduce((a, i) => a + (shown[i].s || 0), 0))}` : ''; };
+        viewEl.querySelectorAll('[data-c]').forEach((c) => c.onchange = () => { c.checked ? sel.add(Number(c.dataset.c)) : sel.delete(Number(c.dataset.c)); sync(); });
+        viewEl.querySelector('#glAll').onchange = (e) => { viewEl.querySelectorAll('[data-c]').forEach((c) => { c.checked = e.target.checked; c.checked ? sel.add(Number(c.dataset.c)) : sel.delete(Number(c.dataset.c)); }); sync(); };
+        viewEl.querySelectorAll('[data-o]').forEach((b) => b.onclick = () => open(shown, Number(b.dataset.o), 'لقطاتك'));
+        const del = async (idx) => {
+          const files = idx.map((i) => shown[i].f);
+          if (!confirm(`أرسل ${files.length} ملف لسلة المحذوفات؟ (تقدر ترجعها من السلة)`)) return;
+          const n = await pv.trashFiles(files);
+          toast(`🗑 راح ${n} ملف للسلة`); lastScan = 0; this.renderGallery(viewEl);
+        };
+        viewEl.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => del([Number(b.dataset.del)]));
+        viewEl.querySelector('#glDel').onclick = () => del([...sel]);
         return;
       }
-      viewEl.innerHTML = tabs + '<div class="empty">أجمع لقطاتك…</div>'; wireTabs();
-      await scan();
-      const games = gameItems().filter((i) => (shots[i.id] || []).length)
-        .sort((a, b) => (shots[b.id][0]?.t || 0) - (shots[a.id][0]?.t || 0));
-      if (!games.length) {
-        viewEl.innerHTML = tabs + `<div class="empty">ما لقيت لقطات ألعاب للحين. البرنامج يجمعها من ستيم وNVIDIA وMedal وXbox Game Bar تلقائياً حسب اللعبة.</div>`; wireTabs();
-        return;
-      }
-      const total = games.reduce((a, g) => a + shots[g.id].length, 0);
-      viewEl.innerHTML = tabs + `<div class="gallery-head"><span>${total} لقطة من ${games.length} لعبة</span><button class="btn primary" id="phoneAll">📲 انقل الكل للجوال</button></div>` + games.map((g) => {
-        const l = shots[g.id];
-        return `<div class="g-row"><div class="group-title">${esc(g.name)} <small>${l.length}</small></div>
-          <div class="d-shots-row big">${l.slice(0, 12).map(thumb).join('')}${l.length > 12 ? `<button class="shot more" data-i="12">+${l.length - 12}</button>` : ''}</div></div>`;
+      viewEl.innerHTML = tabs + head + groups.map((g, n) => {
+        const l = g.files;
+        return `<div class="g-row" data-c="${n}"><div class="group-title">${esc(g.name)} <small>${l.length} · ${size(l.reduce((a, f) => a + (f.s || 0), 0))}</small><span class="spacer"></span><button class="btn ghost sm" data-ph="${n}">📲 للجوال</button></div>
+          <div class="d-shots-row big">${l.slice(0, 14).map(thumb).join('')}${l.length > 14 ? `<button class="shot more" data-i="14">+${l.length - 14}</button>` : ''}</div></div>`;
       }).join('');
       wireTabs();
-      viewEl.querySelector('#phoneAll').onclick = () => sendToPhone(allGroups());
-      viewEl.querySelectorAll('.g-row').forEach((row, n) => {
-        const g = games[n];
-        row.querySelectorAll('.shot').forEach((b) => b.onclick = () => open(shots[g.id], Number(b.dataset.i), g.name));
+      viewEl.querySelector('#phoneAll')?.addEventListener('click', () => sendToPhone(allGroups()));
+      viewEl.querySelectorAll('.g-row').forEach((row) => {
+        const g = groups[Number(row.dataset.c)];
+        row.querySelectorAll('.shot').forEach((b) => b.onclick = () => open(g.files, Number(b.dataset.i), g.name));
+        row.querySelector('[data-ph]').onclick = () => sendToPhone([{ game: g.name, files: g.files.slice(0, 200) }], g.name);
       });
     },
     async openFolder() { const d = await pv.shotsFolder(); pv.launch(d); },

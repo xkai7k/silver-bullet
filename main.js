@@ -70,6 +70,11 @@ function createWindow() {
   win.webContents.on('render-process-gone', (_e, d) => log('renderer gone:', d.reason));
   win.webContents.on('did-fail-load', (_e, code, desc) => log('load failed:', code, desc));
   win.loadFile(path.join(__dirname, 'index.html'));
+  win.on('close', (ev) => { // say goodbye first, then really quit
+    if (byeSaid || win.webContents.isDestroyed()) return;
+    ev.preventDefault(); byeSaid = true; win.webContents.send('app:bye');
+    setTimeout(() => { try { win.destroy(); } catch {} app.quit(); }, 2600);
+  });
   // "Watch with me" → share my screen: friends see this window (with its sound), nothing else on the PC
   try {
     session.defaultSession.setDisplayMediaRequestHandler((_req, cb) => {
@@ -160,8 +165,10 @@ ipcMain.handle('data:save', (_e, data) => {
 });
 
 // ---------- Launching (with play-time tracking for .exe files) ----------
+let gamesRunning = 0; // games started from here that are still open (Akai stays quiet outside the app meanwhile)
 function trackSpawn(e, exe, args, itemId) {
   const started = Date.now();
+  gamesRunning++;
   // Programs start with a clean environment (nothing of Electron's leaks into browsers or games)
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(ELECTRON_|PREVIEW_|CHROME_)/i.test(k)));
   log('run', path.basename(exe), JSON.stringify(args).slice(0, 300));
@@ -174,6 +181,7 @@ function trackSpawn(e, exe, args, itemId) {
     : spawn(exe, args, { cwd: path.dirname(exe), detached: true, stdio: 'ignore', env });
   child.on('error', (err) => log('run failed', exe, err.message));
   child.on('exit', (code) => {
+    gamesRunning = Math.max(0, gamesRunning - 1);
     const secs = Math.round((Date.now() - started) / 1000);
     log('closed', path.basename(exe), 'after', secs + 's', 'code', code);
     if (secs > 20) setTimeout(() => backupSaves().catch(() => {}), 3000); // your progress goes to OneDrive right after you play
@@ -706,6 +714,41 @@ async function steamCover(name) {
   }
   return null;
 }
+// ---------- Game genres (أكشن، مغامرة، منصات…): Steam's store first, then the game's Wikipedia page ----------
+const GENRE_AR = [[/role.?playing|\brpg\b|jrpg/i, 'آر بي جي'], [/platform/i, 'منصات'], [/fighting|beat.?em/i, 'قتال'], [/shoot|fps\b|shooter/i, 'تصويب'],
+  [/racing|kart|driving/i, 'سباق'], [/sport|football|soccer|basketball|golf|tennis|wrestling/i, 'رياضة'], [/puzzle/i, 'ألغاز'], [/strateg|tactic|\brts\b/i, 'استراتيجية'],
+  [/simulat|\bsim\b|management|life sim/i, 'محاكاة'], [/horror/i, 'رعب'], [/party/i, 'حفلات'], [/sandbox|open.?world/i, 'عالم مفتوح'], [/survival/i, 'نجاة'],
+  [/stealth/i, 'تخفي'], [/rhythm|music/i, 'موسيقى'], [/rogue/i, 'روغلايك'], [/massively|mmo/i, 'أونلاين'], [/adventure/i, 'مغامرة'], [/action/i, 'أكشن'], [/family/i, 'عائلية'], [/casual/i, 'خفيفة'], [/indie/i, 'مستقلة']];
+const toAr = (list) => [...new Set(list.flatMap((g) => GENRE_AR.filter(([re]) => re.test(g)).map(([, a]) => a)))].slice(0, 3);
+const genreMemo = new Map();
+ipcMain.handle('game:genres', async (_e, name, appid) => {
+  const key = `${appid || ''}|${name}`;
+  if (genreMemo.has(key)) return genreMemo.get(key);
+  let out = [];
+  try {
+    let id = appid;
+    if (!id) {
+      const n = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+      const j = await steamJson(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(coverClean(name))}&l=english&cc=us`);
+      id = (j.items || []).find((i) => n(i.name) === n(coverClean(name)))?.id;
+    }
+    if (id) {
+      const d = await steamJson(`https://store.steampowered.com/api/appdetails?appids=${id}&filters=genres,categories&l=english`);
+      out = toAr((d?.[id]?.data?.genres || []).map((g) => g.description));
+    }
+    if (!out.length) { // not on Steam (Nintendo, PlayStation games…): the "genre" line of its Wikipedia infobox
+      const H = { headers: { 'User-Agent': 'SilverBullet/1.0' } };
+      for (const t of [`${coverClean(name)} (video game)`, coverClean(name)]) {
+        const wt = await (await net.fetch(`https://en.wikipedia.org/w/api.php?action=parse&format=json&prop=wikitext&section=0&redirects=1&page=${encodeURIComponent(t)}`, H)).json().catch(() => ({}));
+        const text = wt.parse?.wikitext?.['*'] || '';
+        const m = /\|\s*genre\s*=\s*([^\n]+)/i.exec(text);
+        if (m && /video game|\bgame\b|developer\s*=/i.test(text)) { out = toAr(m[1].replace(/\[\[([^|\]]+\|)?([^\]]+)\]\]/g, '$2').split(/,|<br|\{\{|\}\}|\|/)); if (out.length) break; }
+      }
+    }
+  } catch (e) { log('genres', name, e.message); }
+  genreMemo.set(key, out);
+  return out;
+});
 ipcMain.handle('cover:find', async (_e, name, noSteam) => {
   const key = `${noSteam ? 1 : 0}|${name}`;
   if (!coverMemo.has(key)) coverMemo.set(key, (async () => {
@@ -943,7 +986,9 @@ ipcMain.handle('shots:scan', async (_e, games) => {
       if (!d.isDirectory()) continue;
       const g = matchFolder(d.name); if (!g) continue;
       const files = []; listMedia(path.join(root, d.name), 2, files);
-      files.forEach((f) => add(g.id, f, src));
+      // a clip inside another game's folder, but named after a different game ("EA SPORTS FC 27 2026-11-09.mp4"), belongs to that game
+      const titleOf = (f) => path.basename(f).replace(/\s+\d{4}[-_.]\d{2}[-_.]\d{2}.*$/, '').replace(/\.[^.]+$/, '');
+      files.forEach((f) => { const own = matchFolder(path.basename(path.dirname(f))) || matchFolder(titleOf(f)); add((own || g).id, f, src); });
     }
   }
   // 3) Xbox Game Bar: Videos/Captures/"<Game> <date>.png"
@@ -958,8 +1003,8 @@ ipcMain.handle('shots:scan', async (_e, games) => {
   for (const id of Object.keys(result)) {
     const seen = new Set();
     result[id] = result[id].filter((x) => !seen.has(x.f) && seen.add(x.f)).map((x) => {
-      let t = 0; try { t = fs.statSync(x.f).mtimeMs; } catch {}
-      return { ...x, t, video: VID_RE.test(x.f) };
+      let t = 0, sz = 0; try { const st = fs.statSync(x.f); t = st.mtimeMs; sz = st.size; } catch {}
+      return { ...x, t, s: sz, video: VID_RE.test(x.f) };
     }).sort((a, b) => b.t - a.t).slice(0, 300);
   }
   return result;
@@ -990,7 +1035,7 @@ ipcMain.handle('photos:scan', async () => {
       let st; try { st = fs.statSync(f); } catch { continue; }
       if (!VID_RE.test(f) && st.size < 25000) continue; // tiny pictures are icons, not photos
       taken.add(k);
-      list.push({ f, t: st.mtimeMs, video: VID_RE.test(f), src: c.name });
+      list.push({ f, t: st.mtimeMs, s: st.size, video: VID_RE.test(f), src: c.name });
     }
     list.sort((a, b) => b.t - a.t);
     if (list.length) out.push({ id, name: c.name, total: list.length, files: list.slice(0, 600) });
@@ -1327,17 +1372,66 @@ function hookDock(w) {
 app.on('will-quit', () => { try { dockProc?.stdin.end(); } catch {} });
 
 // ---------- Spotify: what's playing (read from the Spotify window title) ----------
-ipcMain.handle('spotify:now', () => new Promise((resolve) => {
-  if (process.platform !== 'win32') return resolve({ running: false });
-  const ps = "$p = Get-Process Spotify -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle } | Select-Object -First 1; if ($p) { $p.MainWindowTitle } else { if (Get-Process Spotify -ErrorAction SilentlyContinue) { '__RUNNING__' } }";
-  execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 8000 }, (err, out) => {
-    const t = String(out || '').trim();
-    if (err || !t) return resolve({ running: false });
-    if (t === '__RUNNING__' || /^spotify( premium| free)?$/i.test(t)) return resolve({ running: true, playing: false });
-    const i = t.indexOf(' - ');
-    resolve({ running: true, playing: true, artist: i > 0 ? t.slice(0, i) : '', track: i > 0 ? t.slice(i + 3) : t });
+ipcMain.handle('spotify:now', async () => { // asks the media helper that's already running: no new PowerShell every few seconds
+  if (process.platform !== 'win32') return { running: false };
+  const r = await mediaAsk('get', 6000);
+  if (!r || !r.ok || r.none) return { running: false };
+  return { running: true, playing: !!r.playing, artist: r.artist || '', track: r.title || '' };
+});
+// ---------- Updates: new versions come from GitHub by themselves (no need to download the app again) ----------
+const UPDATE_REPO = 'xkai7k/silver-bullet';
+const updFile = () => path.join(app.getPath('userData'), 'update.json');
+let updBusy = false;
+async function checkUpdate(manual) {
+  if (TEST_COPY || updBusy || process.platform !== 'win32') return { ok: false };
+  const src = SRC_DIR.replace(/[\\/]+$/, '');
+  // only a copy the app manages itself; never a folder someone is editing (has .git) 
+  if (fs.existsSync(path.join(src, '.git')) || !/[\\/](SilverBullet[\\/]src|SilverBullet-src)$/i.test(src)) return { ok: false, reason: 'dev' };
+  updBusy = true;
+  try {
+    const sha = (await (await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/commits/main`, { headers: { Accept: 'application/vnd.github.sha', 'User-Agent': 'SilverBullet' } })).text()).trim();
+    if (!/^[0-9a-f]{40}$/.test(sha)) return { ok: false, reason: 'no answer' };
+    let cur = {}; try { cur = JSON.parse(fs.readFileSync(updFile(), 'utf8')); } catch {}
+    if (!cur.sha) { fs.writeFileSync(updFile(), JSON.stringify({ sha, at: Date.now() })); return { ok: true, latest: true }; } // first start: this is the newest
+    if (cur.sha === sha) return { ok: true, latest: true };
+    const tmp = path.join(app.getPath('temp'), 'sb-update'); fs.rmSync(tmp, { recursive: true, force: true }); fs.mkdirSync(tmp, { recursive: true });
+    const zip = path.join(tmp, 'u.zip');
+    const buf = Buffer.from(await (await net.fetch(`https://codeload.github.com/${UPDATE_REPO}/zip/${sha}`)).arrayBuffer());
+    if (buf.length < 10000) throw new Error('download too small');
+    fs.writeFileSync(zip, buf);
+    const r = await run('tar', ['-xf', zip, '-C', tmp]);
+    if (r.code !== 0) throw new Error('unzip ' + r.err);
+    const top = fs.readdirSync(tmp).map((d) => path.join(tmp, d)).find((d) => fs.statSync(d).isDirectory());
+    if (!top || !fs.existsSync(path.join(top, 'main.js'))) throw new Error('not the app');
+    fs.cpSync(top, src, { recursive: true, force: true, filter: (f) => !/[\\/]\.git(hub)?([\\/]|$)/.test(f) });
+    fs.writeFileSync(updFile(), JSON.stringify({ sha, at: Date.now() }));
+    log('updated to', sha.slice(0, 7));
+    mainWin?.webContents.send('update:ready');
+    return { ok: true, updated: true };
+  } catch (e) { log('update failed', e.message); return { ok: false, reason: e.message }; } finally { updBusy = false; }
+}
+setTimeout(() => checkUpdate(), 40 * 1000);
+setInterval(() => checkUpdate(), 6 * 60 * 60 * 1000);
+ipcMain.handle('update:check', () => checkUpdate(true));
+ipcMain.handle('update:restart', () => { byeSaid = true; app.relaunch(fs.existsSync(INSTALLED_EXE) ? { execPath: INSTALLED_EXE, args: [] } : undefined); app.exit(0); });
+ipcMain.handle('game:running', () => gamesRunning > 0);
+// Photos / clips list → delete: goes to the Recycle Bin (you can bring it back)
+ipcMain.handle('file:trash', async (_e, files) => { let n = 0; for (const f of files || []) { try { await shell.trashItem(f); n++; } catch (e) { log('trash failed', f, e.message); } } return n; });
+ipcMain.handle('data:open', () => shell.openPath(app.getPath('userData')));
+// Spotify's own volume in the Windows mixer (or the whole PC when Spotify isn't making sound)
+ipcMain.handle('media:volume', (_e, level, target) => new Promise((resolve) => {
+  if (process.platform !== 'win32') return resolve('none');
+  execFile('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'ps', 'volume.ps1'), String(Math.round(Number(level) || 0)), String(target || 'spotify')], { windowsHide: true, timeout: 15000 }, (err, out, errOut) => {
+    const last = String(out || '').trim().split(/\r?\n/).pop() || '';
+    if (err || /^err:/.test(last)) log('volume failed', (last || String(errOut || err?.message || '')).slice(0, 700));
+    resolve(err || /^err:/.test(last) ? 'none' : last);
   });
 }));
+ipcMain.handle('notify', (_e, body) => { try { const { Notification } = require('electron'); if (Notification.isSupported()) new Notification({ title: 'أكاي', body: String(body || ''), silent: true }).show(); } catch {} return true; });
+// Closing: the app says goodbye first, then really quits (nothing stays running in the background)
+let byeSaid = false;
+ipcMain.handle('app:quit', () => { byeSaid = true; try { mainWin?.destroy(); } catch {} app.quit(); return true; });
+
 
 // ---------- Video position inside web tabs (works in embedded players too) ----------
 function qrSvgOf(text) {

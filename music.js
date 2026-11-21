@@ -241,6 +241,7 @@
     if (playing) switchTo(wanted); else updateDisc();
   }
   function play() {
+    if (typeof data !== 'undefined' && data.settings?.plugins?.tunes === false) return; // switched off in Settings → الإضافات
     playing = true;
     ensureCtx(); if (ctx.state === 'suspended') ctx.resume();
     master.gain.setTargetAtTime(volume(), ctx.currentTime, 0.3);
@@ -347,7 +348,8 @@
     pauseForApp() { if (playing) { pause(false); this._resume = true; } },
     // never talk over Spotify: the tunes come back only when it's quiet
     resumeIfPaused() { if (this._resume && data.music.on !== false && !spotifyOn()) { this._resume = false; play(); } },
-    spotifyChanged(on) { if (on) { if (playing) { pause(false); this._resume = true; } } else this.resumeIfPaused(); updateDisc(); },
+    setVol(v) { data.music.volume = Math.max(0, Math.min(1, v)); save(); if (ctx && playing) master.gain.setTargetAtTime(Math.max(0.0001, data.music.volume), ctx.currentTime, 0.2); updateDisc(); },
+    spotifyChanged(on) { if (on && data.settings?.duck === false) return; if (on) { if (playing) { pause(false); this._resume = true; } } else this.resumeIfPaused(); updateDisc(); },
     play() { (data.music ||= {}).on = true; save(); play(); },
     pause() { pause(); },
     isPlaying: () => playing,

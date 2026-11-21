@@ -14,6 +14,7 @@
 
   <header class="topbar">
     <button id="backBtn" class="btn ghost" hidden>→ رجوع</button>
+    <button id="avatarBtn" class="avatar-btn" title="صورتك (غيّرها من الإعدادات ← شكلك)" hidden><img alt=""></button>
     <div class="titles">
       <h1 id="title">Silver Bullet</h1>
       <div id="subtitle"></div>
@@ -180,13 +181,39 @@
 
   <dialog id="settings">
     <h2>الإعدادات</h2>
-    <div class="tabs"><button type="button" class="tab on" data-tab="general">عام</button><button type="button" class="tab" data-tab="moods">المودات</button><button type="button" class="tab" data-tab="controls">التحكم</button></div>
+    <div class="tabs"><button type="button" class="tab on" data-tab="general">عام</button><button type="button" class="tab" data-tab="look">شكلك</button><button type="button" class="tab" data-tab="keys">المفاتيح والبايوس</button><button type="button" class="tab" data-tab="plugins">الإضافات</button><button type="button" class="tab" data-tab="moods">المودات</button><button type="button" class="tab" data-tab="controls">التحكم</button><button type="button" class="tab" data-tab="advanced">متقدم</button></div>
+    <div id="setLook" hidden>
+      <div class="set-row"><span>صورتك (تطلع فوق يمين)</span><button type="button" class="btn ghost sm" id="setAvatarPick">اختر صورة…</button><button type="button" class="btn ghost sm" id="setAvatarClear">بدون</button></div>
+            <div class="set-row"><span>خلفية من عندك (صورة أو فيديو)</span><button type="button" class="btn ghost sm" id="setBgPick">اختر…</button><button type="button" class="btn ghost sm" id="setBgClear">بدون</button></div>
+      <label>إضاءة البرنامج <input type="range" id="setBright" min="40" max="130" step="5"></label>
+      <label class="check"><input type="checkbox" id="setArtStrong"> صورة اللعبة تغطي الخلفية بالكامل (بدل ما تكون خفيفة فوق تصميم الثيم)</label>
+      <p class="hint">صورة أي لعبة أو صفحة تقدر تغيّرها: كليك يمين عليها ← "غيّر الصورة".</p>
+    </div>
+    <div id="setKeys" hidden>
+      <div id="keysDrop" class="keys-drop"><b>🔑 اسحب هنا</b><span>مفاتيح السويتش (prod.keys / title.keys)، الفيرموير، وملفات البايوس (PS1، PS2…)</span><small>أو</small><button type="button" class="btn ghost sm" id="keysPick">اختر ملفات…</button></div>
+      <div id="keysStatus" class="keys-status"></div>
+      <div class="set-row"><span>المجلد نفسه</span><button type="button" class="btn ghost sm" id="keysOpen">📂 افتح مجلد البايوس</button></div>
+      <p class="hint">أحطها في مكانها لكل محاكي (Ryujinx، Lichii، PCSX2، DuckStation…) لحالي. ما تنرفع للنت أبد.</p>
+    </div>
+    <div id="setPlugins" hidden>
+      <p class="hint">إضافات اختيارية: طفّ اللي ما تحتاجه ويصير البرنامج أخف.</p>
+      <div id="pluginList"></div>
+    </div>
+    <div id="setAdvanced" hidden>
+      <label>صوت الألحان (القرص) <input type="range" id="advMusicVol" min="0" max="100" step="5"></label>
+      <label>صوت أكاي (التنبيه لما يسمعك) <input type="range" id="advDingVol" min="0" max="100" step="5"></label>
+      <label class="check"><input type="checkbox" id="advDuck"> لما يشتغل سبوتيفاي أو فيديو، الألحان توقف لحالها</label>
+      <label class="check"><input type="checkbox" id="advLite"> وضع خفيف: حركات أقل (للأجهزة الضعيفة أو اللابتوب على البطارية)</label>
+      <label class="check"><input type="checkbox" id="advReduceFx"> بدون تمويه خلف القوائم (أسرع)</label>
+      <div class="set-row"><span>بيانات البرنامج</span><button type="button" class="btn ghost sm" id="advOpenData">📂 افتح</button><button type="button" class="btn ghost sm" id="advLogs">📜 السجلات</button></div>
+    </div>
     <div id="setMoods" hidden></div>
     <div id="setControls" hidden></div>
     <div id="setGeneral">
     <label>اسمك (يناديك فيه البرنامج)<input id="setName" maxlength="24" placeholder="اسمك"></label>
-    <label class="check"><input type="checkbox" id="setWakeOn"> نادِ أكاي بصوتك بدل زر المايك</label>
-    <p class="hint">قل "أكاي" وبعدها طلبك على طول (مثلاً "أكاي سبوتيفاي")، أو قل "أكاي" لحاله وانتظره يطل عليك. كل شي يصير على جهازك وما يطلع للنت.</p>
+    <label>اسم المساعد (تناديه فيه)<input id="setAkaiName" maxlength="16" placeholder="أكاي"></label>
+    <label class="check"><input type="checkbox" id="setWakeOn"> نادِه بصوتك بدل الضغط عليه</label>
+    <p class="hint">قل اسمه وبعدها طلبك على طول (مثلاً "أكاي سبوتيفاي")، أو اسمه لحاله وانتظره يطل عليك. <b>وأنت برا البرنامج</b> يسمع أوامر الأغاني بس: "أكاي قدّم الأغنية"، "أكاي خل الصوت 30"، "Akai next song". وإذا لعبة شغّالة ما يسمع شي. كل شي يصير على جهازك وما يطلع للنت.</p>
     <label>دقة التعرف على الصوت
       <select id="setVoiceModel">
         <option value="small">أدق بالعربي (الافتراضي)</option>
@@ -194,10 +221,7 @@
       </select>
     </label>
     <label class="check"><input type="checkbox" id="setAutostart"> شغّل Silver Bullet تلقائياً مع ويندوز</label>
-    <label>إضاءة البرنامج <input type="range" id="setBright" min="40" max="130" step="5"></label>
-    <div class="set-row"><span>خلفية من عندك (صورة أو فيديو)</span><button type="button" class="btn ghost sm" id="setBgPick">اختر…</button><button type="button" class="btn ghost sm" id="setBgClear">بدون</button></div>
     <label class="check"><input type="checkbox" id="setAfk"> إذا ما لمست شي ١٥ دقيقة، تختفي القوائم ويبقى المنظر المتحرك (يرجع أول ما تحرك الماوس أو اليد)</label>
-    <label class="check"><input type="checkbox" id="setArtStrong"> صورة اللعبة تغطي الخلفية بالكامل (بدل ما تكون خفيفة فوق تصميم الثيم)</label>
     <p class="hint">أول مرة تستخدم الصوت ينزّل نموذج التعرف مرة وحدة، وبعدها يشتغل بدون نت.<br>
       اختصار الصوت من أي مكان: <b dir="ltr">Ctrl + Alt + Space</b></p>
     </div>

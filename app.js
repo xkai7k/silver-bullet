@@ -20,6 +20,7 @@ const pv = {
   consoleArt: async () => null,
   videoState: async () => null,
   videoSeek: async () => null,
+  gameRunning: async () => false, openDataDir: async () => false, onUpdate: () => {}, updateRestart: async () => false, setVolume: async () => 'none', notify: async () => true, quitNow: async () => window.close(), onBye: () => {}, biosAdd: async () => ({ got: [] }),
   mediaKey: async () => false,
   onPlaytime: () => {},
   onVoiceStart: () => {},
@@ -517,14 +518,14 @@ function renderPage() {
     spDockSync(true);
     return;
   }
-  const cats = [...new Set(p.items.flatMap((i) => i.categories || []))];
+  const cats = [...new Set(p.items.flatMap((i) => [...(i.categories || []), ...(p.type === 'games' ? i.genres || [] : [])]))];
   if (currentFilter !== 'all' && currentFilter !== '__top' && !cats.includes(currentFilter)) currentFilter = 'all';
   const showTop = p.items.length && p.type !== 'apps' && p.type !== 'mods';
 
   const chips = (cats.length || showTop) ? `<div class="chips">
       <button class="chip ${currentFilter === 'all' ? 'on' : ''}" data-cat="all">الكل</button>
       ${showTop ? `<button class="chip ${currentFilter === '__top' ? 'on' : ''}" data-cat="__top">🏆 الأفضل</button>` : ''}
-      ${cats.map((c) => `<button class="chip ${currentFilter === c ? 'on' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}
+      ${cats.map((c) => `<button class="chip ${currentFilter === c ? 'on' : ''} ${GENRES.includes(c) ? 'genre' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}
     </div>` : '<div style="height:10px"></div>';
 
   const addTile = `<div class="tile add" id="addTile"><div class="cover"><span class="initial">+</span></div><div class="label">إضافة</div></div>`;
@@ -538,7 +539,7 @@ function renderPage() {
   if (currentFilter === '__top') {
     view.innerHTML = chips + leaderboardHtml(p);
   } else {
-    let items = currentFilter === 'all' ? p.items : p.items.filter((i) => (i.categories || []).includes(currentFilter));
+    let items = currentFilter === 'all' ? p.items : p.items.filter((i) => (i.categories || []).includes(currentFilter) || (i.genres || []).includes(currentFilter));
     if (['games', 'apps', 'emu', 'mods'].includes(p.type)) items = [...items].sort((a, b) => (b.emuId ? 1 : 0) - (a.emuId ? 1 : 0) || String(a.name).localeCompare(String(b.name), 'ar', { numeric: true, sensitivity: 'base' }));
     let body;
     if (p.type === 'emu' && currentFilter === 'all' && items.length) {
@@ -612,7 +613,9 @@ function renderPage() {
       { label: 'تعديل', run: () => openEditor(item.id) },
       { label: '📌 ثبّت فوق (دخول سريع)', run: () => window.SB?.pin(item.id) },
       ...((data.moods || []).length ? [{ label: '✨ أضفه لمود…', run: () => setTimeout(() => showCtx(e, data.moods.map((m) => ({ label: `${m.emoji || ''} ${m.name}${m.items.includes(item.id) ? ' ✓' : ''}`, run: () => { m.items = m.items.includes(item.id) ? m.items.filter((x) => x !== item.id) : [...m.items, item.id]; save(); toast(m.items.includes(item.id) ? `انضاف لمود ${m.name}` : `انشال من مود ${m.name}`); } }))), 0) }] : []),
+      { label: '🖼 غيّر الصورة (من جهازك)', run: async () => { const f = await pv.pickFile('image'); if (f) { item.image = f; delete item.noArt; delete item.hero; save(); renderPage(); toast('تم'); } } },
       ...(!isWeb(item.target) && (!item.image || item.noArt) ? [{ label: '🔍 جيب صورة تلقائياً', run: () => { delete item.noArt; autoCoverFor(item, true); } }] : []),
+      ...(isGameItem(item, findItem(item.id)?.page) && !item.store ? [{ label: '🏷 التصنيف (أكشن، مغامرة…)', run: () => editGenres(item) }] : []),
       ...(item.rom && /\.(nsp|xci)$/i.test(item.rom) ? [{ label: item.emuPref === 'lichii' ? '🔁 شغّلها بـ Ryujinx (الافتراضي)' : '🔁 شغّلها بمحاكي Lichii (لو علّقت أو طاحت)', run: () => { item.emuPref = item.emuPref === 'lichii' ? '' : 'lichii'; save(); toast(item.emuPref ? 'هاللعبة تشتغل الحين بـ Lichii' : 'رجعت تشتغل بـ Ryujinx'); } }] : []),
       ...((item.image || item.icon) && !item.noArt ? [{ label: '🖼 شيل الصورة (يكتب الاسم بس)', run: () => { item.noArt = true; save(); renderPage(); } }] : []),
       ...(isWeb(item.target) ? [{ label: item.external ? '🗔 افتحه داخل البرنامج' : '🌐 افتحه في المتصفح', run: () => { item.external = !item.external; save(); toast(item.external ? 'بيفتح في المتصفح' : 'بيفتح داخل البرنامج'); } }] : []),
@@ -827,14 +830,17 @@ function renderDrawer() {
   const quick = [
     ['home', '🏠', 'الرئيسية'], ['ratings', '⭐', 'التقييم'], ['theme', '🎨', 'الثيمات'], ['settings', '⚙️', 'الإعدادات'],
     ['pad', '🎮', 'اليد والأجهزة'], ['emu', '🕹️', 'المحاكيات'], ['voice', '🎙', 'كلّم أكاي'], ['help', '؟', 'التعليمات'],
-    ['downloads', '⬇', 'التحميلات'], ['logs', '📜', 'السجلات'], ['stores', '🛒', 'المتاجر'],
+    ['downloads', '⬇', 'التحميلات'], ['logs', '📜', 'السجلات'], ['stores', '🛒', 'المتاجر'], ['features', '✨', 'المزايا'],
   ];
   nav.innerHTML = `
     <div class="dr-quick">${quick.map(([k, i, t]) => `<button data-nav="${k}" class="dq ${k === 'home' && !currentPageId ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</div>
-    <div class="nav-sep">الصفحات</div>
-    ${data.pages.map((p) => `<button data-nav="page:${p.id}" class="${currentPageId === p.id ? 'on' : ''}"><span>${pageIcon(p)}</span>${esc(p.name)}<small>${p.type === 'calendar' ? (data.events || []).length : p.items.length}</small></button>`).join('')}
-    <button data-nav="newpage"><span>＋</span>صفحة جديدة</button>
-    ${paths.mods ? '<div class="nav-sep">مجلدات</div><button data-nav="mods"><span>📂</span>مجلد المودات</button>' : ''}`;
+    <div class="nav-sep">مجلداتك</div>
+    <button data-nav="mods"><span>🧩</span>المودات والتعريبات<small>اسحبها هنا</small></button>
+    <button data-nav="keys"><span>🔑</span>المفاتيح والبايوس<small>السويتش وغيره</small></button>
+    <button data-nav="gamesdir"><span>🎮</span>مجلد الألعاب<small>المحاكيات</small></button>
+    <div class="nav-sep">أكثر</div>
+    <button data-nav="plugins"><span>🔌</span>الإضافات<small>شغّل أو طفّي</small></button>
+    <button data-nav="newpage"><span>＋</span>صفحة جديدة</button>`;
   nav.querySelectorAll('[data-nav]').forEach((b) => {
     b.onclick = () => {
       const v = b.dataset.nav;
@@ -843,13 +849,17 @@ function renderDrawer() {
       else if (v.startsWith('page:')) goPage(v.slice(5));
       else if (v === 'newpage') openPageEditor(null);
       else if (v === 'emu') { goPage('emu'); openEmuDialog(); }
-      else if (v === 'mods') pv.launch(paths.mods);
+      else if (v === 'mods') { if (paths.mods) pv.launch(paths.mods); }
+      else if (v === 'keys') openSettings('keys');
+      else if (v === 'plugins') openSettings('plugins');
+      else if (v === 'gamesdir') pv.romsFolder('games');
       else if (v === 'theme') openThemePicker();
       else if (v === 'voice') window.Voice?.start();
       else if (v === 'settings') openSettings();
       else if (v === 'pad') window.openPadCenter?.();
       else if (v === 'ratings') window.SB?.openRatings('tiers');
       else if (v === 'help') window.Help?.open();
+      else if (v === 'features') window.Help?.features();
       else if (v === 'logs') openLogs();
       else if (v === 'downloads') { const b = $('#torBox'); if (b && b.innerHTML && b._doneAt !== 1) { b.hidden = false; b.classList.add('tb-open'); } else openLogs('dl'); }
       else if (v === 'stores') addStores(true);
@@ -858,6 +868,23 @@ function renderDrawer() {
 }
 // ---------- Logs: what you downloaded, and everything that happened (errors in red) ----------
 const logsDlg = document.createElement('dialog'); logsDlg.id = 'logsDlg'; document.body.appendChild(logsDlg);
+// What probably went wrong, and what to do — shown under each error in the log
+const LOG_FIXES = [
+  [/prod\.keys|keys? (file|not found)|Could not load keys/i, 'مفاتيح السويتش ناقصة: الإعدادات ← المفاتيح والبايوس، واسحب ملف prod.keys.'],
+  [/firmware/i, 'فيرموير السويتش: اسحب ملف الفيرموير (zip) في الإعدادات ← المفاتيح والبايوس.'],
+  [/bios/i, 'البايوس ناقص لهذا الجهاز: اسحب ملفات البايوس في الإعدادات ← المفاتيح والبايوس.'],
+  [/DeviceLost|ErrorDeviceLost|vulkan/i, 'كرت الشاشة ما تحمّل طريقة الرسم: البرنامج يحوّلها لـ OpenGL لحاله، شغّل اللعبة مرة ثانية. لو تكرر حدّث تعريف كرت الشاشة.'],
+  [/ENOSPC|no space|disk full/i, 'المساحة خلصت: افتح الألعاب ← المساحة واحذف اللي ما تحتاجه.'],
+  [/EACCES|EPERM|denied|access is denied/i, 'ويندوز منع الوصول للملف: سكّر أي برنامج فاتحه، أو جرّب تشغّل البرنامج كمسؤول.'],
+  [/ENOENT|not found|no such file|ما لقيت/i, 'الملف انتقل أو انحذف: تأكد إنه موجود، أو اسحبه للبرنامج مرة ثانية.'],
+  [/timeout|timed out|ETIMEDOUT|ECONNRESET|ENOTFOUND|network|fetch failed/i, 'مشكلة نت: تأكد من الاتصال (أو طفّ الـ VPN) وجرّب بعد شوي.'],
+  [/torrent.*(dead|stalled|no peers)|dead/i, 'التورنت ما له مصادر (ميت): جرّب ملف تورنت ثاني لنفس اللعبة.'],
+  [/corrupt|checksum|hash|invalid/i, 'الملف خربان أو ناقص: احذفه ونزّله مرة ثانية (التورنت يصلحه لحاله لو كان من عندنا).'],
+  [/crash|exited|code -?\d{3,}/i, 'المحاكي طاح: جرّب محاكي ثاني (كليك يمين على اللعبة)، أو حدّث المحاكي من صفحة المحاكيات.'],
+  [/volume failed/i, 'ما قدرت أغيّر الصوت: تأكد إن سبوتيفاي شغّال ويطلع منه صوت.'],
+  [/voice|microphone|getUserMedia/i, 'المايك: تأكد إنه موصول ومسموح له في إعدادات الخصوصية بالويندوز.'],
+];
+const logFix = (l) => (LOG_FIXES.find(([re]) => re.test(l)) || [])[1] || 'جرّب تسوي الشي مرة ثانية. لو تكرر، صوّر السطر هذا وأرسله.';
 async function openLogs(tab = 'dl') {
   const r = await pv.logsGet();
   const when = (t) => new Date(t).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -871,7 +898,7 @@ async function openLogs(tab = 'dl') {
         <button class="btn ghost sm" data-x>✕</button></div>
       ${tab === 'dl' ? (r.history.length ? `<div class="lg-list">${r.history.map((h) => `<div class="lg-row"><time>${when(h.t)}</time><b>${esc(h.kind)}</b><span dir="auto">${esc(h.what)}</span></div>`).join('')}</div>` : '<div class="empty small">لسا ما حمّلت شي من هنا</div>')
         : `<div class="lg-tools"><label><input type="checkbox" id="lgErr" ${onlyErr ? 'checked' : ''}> الأخطاء بس</label><span class="spacer"></span><button class="btn ghost sm" id="lgOpen">📂 افتح ملف السجل</button></div>
-        <div class="lg-list lg-ev">${ev.map((l) => { const m = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(l); return `<div class="lg-row ${isErr(l) ? 'bad' : ''}"><time>${m ? when(m[1]) : ''}</time><span dir="ltr">${esc((m ? m[2] : l).slice(0, 600))}</span></div>`; }).join('') || '<div class="empty small">ما فيه أخطاء 👌</div>'}</div>`}`;
+        <div class="lg-list lg-ev">${ev.map((l) => { const m = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(l); return `<div class="lg-row ${isErr(l) ? 'bad' : ''}"><time>${m ? when(m[1]) : ''}</time><span dir="ltr">${esc((m ? m[2] : l).slice(0, 600))}</span>${isErr(l) ? `<em class="lg-fix">💡 ${esc(logFix(l))}</em>` : ''}</div>`; }).join('') || '<div class="empty small">ما فيه أخطاء 👌</div>'}</div>`}`;
     logsDlg.querySelector('[data-x]').onclick = () => logsDlg.close();
     logsDlg.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { tab = b.dataset.tab; draw(); });
     const c = logsDlg.querySelector('#lgErr'); if (c) c.onchange = () => { onlyErr = c.checked; draw(); };
@@ -1793,6 +1820,35 @@ function drawSelection() {
 
 // ---------- Context menu ----------
 const ctx = $('#ctx');
+// ---------- Game genres: filled in by themselves (Steam / Wikipedia), and you can change them ----------
+const GENRES = ['أكشن', 'مغامرة', 'آر بي جي', 'منصات', 'قتال', 'تصويب', 'سباق', 'رياضة', 'ألغاز', 'استراتيجية', 'محاكاة', 'رعب', 'حفلات', 'عالم مفتوح', 'نجاة', 'تخفي', 'موسيقى', 'روغلايك', 'أونلاين', 'عائلية', 'خفيفة', 'مستقلة', 'كوميدي', 'قصة'];
+let genreBusy = false;
+async function fillGenres() {
+  if (genreBusy || !inElectron) return; genreBusy = true;
+  try {
+    const todo = (page('games')?.items || []).filter((i) => !i.genres && !i.genresTried && !i.store && !APP_LIKE.test(i.name)).slice(0, 25);
+    for (const i of todo) {
+      const appid = (/^steam:\/\/(?:rungameid|install)\/(\d+)/.exec(i.target || '') || [])[1];
+      const g = await pv.gameGenres(cleanRomName ? cleanRomName(i.name) : i.name, appid).catch(() => []);
+      i.genresTried = true; if (g?.length) i.genres = g;
+      save();
+    }
+    if (todo.length && currentPageId === 'games') renderPage();
+  } finally { genreBusy = false; }
+}
+function editGenres(item) {
+  const d = document.createElement('dialog'); d.className = 'genre-dlg';
+  const cur = new Set(item.genres || []);
+  const draw = () => {
+    d.innerHTML = `<h2>🏷 تصنيف ${esc(item.name)}</h2><p class="hint">اختر لين 3 (أو أكثر لو تبي)</p>
+      <div class="genre-pick">${GENRES.map((g) => `<button class="chip ${cur.has(g) ? 'on' : ''}" data-g="${esc(g)}">${esc(g)}</button>`).join('')}</div>
+      <div class="actions"><button class="btn ghost" data-x>إلغاء</button><button class="btn primary" data-ok>حفظ</button></div>`;
+    d.querySelectorAll('[data-g]').forEach((b) => b.onclick = () => { const g = b.dataset.g; cur.has(g) ? cur.delete(g) : cur.add(g); draw(); });
+    d.querySelector('[data-x]').onclick = () => d.close();
+    d.querySelector('[data-ok]').onclick = () => { item.genres = [...cur]; item.genresTried = true; save(); d.close(); renderPage(); toast('تم'); };
+  };
+  document.body.appendChild(d); d.addEventListener('close', () => d.remove()); draw(); d.showModal();
+}
 function showCtx(e, entries) {
   e.preventDefault();
   ctx.innerHTML = '';
@@ -1925,8 +1981,41 @@ spPop.innerHTML = `
   <div class="spp-info"><b class="spp-title">—</b><small class="spp-artist"></small><small class="spp-album"></small></div>
   <input type="range" class="spp-seek" min="0" max="100" step="0.5" value="0">
   <div class="spp-times"><span class="spp-cur">0:00</span><span class="spp-dur">0:00</span></div>
-  <div class="spp-ctrl"><button data-k="prev">⏮</button><button data-k="playpause" class="spp-pp">⏯</button><button data-k="next">⏭</button></div>`;
+  <div class="spp-ctrl"><button data-k="prev">⏮</button><button data-k="playpause" class="spp-pp">⏯</button><button data-k="next">⏭</button></div>
+  <div class="spp-lists"><div class="spp-lh"><b>قوائمك</b><button class="spp-add" title="أضف قائمة من سبوتيفاي">＋</button></div><div class="spp-ll"></div></div>`;
 $('#spotifyBar').appendChild(spPop);
+// ---- your playlists: pick what to listen to right from the bar ----
+function spListId(link) { const m = /(playlist|album|artist|collection)[/:]([A-Za-z0-9]+)?/.exec(String(link)); if (!m) return null; return m[1] === 'collection' ? 'spotify:collection:tracks' : `spotify:${m[1]}:${m[2]}`; }
+function drawSpLists() {
+  const box = spPop.querySelector('.spp-ll'); const l = data.spLists || [];
+  box.innerHTML = l.length ? l.map((x, i) => `<button class="spp-li" data-i="${i}" title="شغّلها"><span>${x.icon || '🎵'}</span><b dir="auto">${esc(x.name)}</b><i data-rm="${i}" title="شيلها">✕</i></button>`).join('')
+    : '<small class="spp-hint">اضغط ＋ وحط رابط أي قائمة من سبوتيفاي (Share ← Copy link)</small>';
+  box.querySelectorAll('.spp-li').forEach((b) => b.onclick = async (e) => {
+    const rm = e.target.closest('[data-rm]');
+    if (rm) { e.stopPropagation(); data.spLists.splice(Number(rm.dataset.rm), 1); save(); drawSpLists(); return; }
+    const x = data.spLists[Number(b.dataset.i)];
+    window.Music?.pauseForApp();
+    await pv.launch(x.uri);
+    toast(`🎵 فتحت "${x.name}" في سبوتيفاي`);
+    setTimeout(pollSpotify, 2500);
+  });
+}
+spPop.querySelector('.spp-add').onclick = (e) => {
+  e.stopPropagation();
+  const d = document.createElement('dialog'); d.className = 'sp-add-dlg';
+  d.innerHTML = `<h2>🎵 أضف قائمة</h2><label>رابط القائمة أو الألبوم من سبوتيفاي<input id="spaLink" dir="ltr" placeholder="https://open.spotify.com/playlist/…"></label>
+    <label>اسمها<input id="spaName" placeholder="مثلاً: سواقة، نوم، جيم…" maxlength="30"></label>
+    <div class="spp-pre"><button class="chip" data-pre="spotify:collection:tracks|💚 الأغاني اللي عجبتني">💚 الأغاني اللي عجبتني</button></div>
+    <div class="actions"><button class="btn ghost" data-x>إلغاء</button><button class="btn primary" data-ok>أضف</button></div>`;
+  document.body.appendChild(d); d.addEventListener('close', () => d.remove()); d.showModal();
+  d.querySelector('[data-x]').onclick = () => d.close();
+  d.querySelector('[data-pre]').onclick = (ev) => { const [u, n] = ev.target.dataset.pre.split('|'); (data.spLists ||= []).push({ uri: u, name: n.replace(/^\S+\s/, ''), icon: '💚' }); save(); drawSpLists(); d.close(); };
+  d.querySelector('[data-ok]').onclick = () => {
+    const uri = spListId(d.querySelector('#spaLink').value.trim());
+    if (!uri) { toast('الرابط مو رابط قائمة سبوتيفاي'); return; }
+    (data.spLists ||= []).push({ uri, name: d.querySelector('#spaName').value.trim() || 'قائمة' }); save(); drawSpLists(); d.close(); toast('ضفتها ✓');
+  };
+};
 let spMedia = null, spMediaKey = '', spPopTimer = 0, spPopPoll = 0, spDragging = false, spArtBusy = false, spArtTries = 0;
 // The song's cover, shown in the card and as the little picture in the bar
 async function loadSpArt() {
@@ -1990,6 +2079,7 @@ function openPop() {
   if (!spPop.hidden) return;
   spPop.hidden = false;
   requestAnimationFrame(() => spPop.classList.add('show'));
+  drawSpLists();
   refreshPop();
   clearInterval(spPopPoll);
   spPopPoll = setInterval(() => { refreshPop(); }, 2000);
@@ -2034,9 +2124,11 @@ setTimeout(pollSpotify, 1500);
 function openSettings(tab = 'general') {
   $('#setAutostart').checked = !!data.settings.autostart;
   document.querySelectorAll('#settings .tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
-  $('#setGeneral').hidden = tab !== 'general';
-  $('#setControls').hidden = tab !== 'controls';
-  $('#setMoods').hidden = tab !== 'moods';
+  for (const [t, id] of [['general', 'setGeneral'], ['controls', 'setControls'], ['moods', 'setMoods'], ['look', 'setLook'], ['keys', 'setKeys'], ['plugins', 'setPlugins'], ['advanced', 'setAdvanced']]) $('#' + id).hidden = tab !== t;
+  if (tab === 'keys') keysStatus();
+  if (tab === 'plugins') drawPlugins();
+  if (tab === 'advanced') { $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDingVol').value = Math.round((data.settings.dingVol ?? 1) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
+  $('#setAkaiName').value = data.settings.akaiName || '';
   if (tab === 'moods') window.renderMoodSettings?.($('#setMoods'));
   if (tab === 'controls') window.renderControlSettings?.($('#setControls'));
   $('#setVoiceModel').value = data.settings.voiceModel || 'base';
@@ -2066,6 +2158,70 @@ $('#setBright').oninput = () => { data.settings.brightness = Number($('#setBrigh
 $('#setAfk').onchange = () => { data.settings.afk = $('#setAfk').checked; save(); };
 $('#setBgPick').onclick = async () => { const f = await pv.pickFile('media'); if (f) { data.settings.customBg = f; save(); window.SB?.applyLook(); toast('صارت خلفيتك'); } };
 $('#setBgClear').onclick = () => { delete data.settings.customBg; save(); window.SB?.applyLook(); toast('رجعت خلفية الثيم'); };
+// ---- your look: avatar top-right ----
+function drawAvatar() { const b = $('#avatarBtn'); const a = data.settings?.avatar; b.hidden = !a; if (a) b.querySelector('img').src = toImageUrl(a); }
+$('#setAvatarPick').onclick = async () => { const f = await pv.pickFile('image'); if (f) { data.settings.avatar = f; save(); drawAvatar(); toast('حطيت صورتك'); } };
+$('#setAvatarClear').onclick = () => { delete data.settings.avatar; save(); drawAvatar(); };
+$('#avatarBtn').onclick = () => openSettings('look');
+// ---- the assistant's name ----
+$('#setAkaiName').onchange = () => { const n = $('#setAkaiName').value.trim(); if (n) data.settings.akaiName = n; else delete data.settings.akaiName; save(); window.Akai?.sync?.(); toast(`صار اسمه ${n || 'أكاي'}: ناده باسمه`); };
+// ---- keys & BIOS: drop them here, they go where every emulator looks ----
+async function keysStatus() {
+  const r = await pv.biosStatus?.().catch(() => null);
+  const row = (ok, t) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '✓' : '✗'} ${t}</span>`;
+  $('#keysStatus').innerHTML = r ? [row(r.switchKeys, 'مفاتيح السويتش'), row(r.switchFw, 'فيرموير السويتش'), row(r.ps2, 'بايوس PS2'), row(r.ps1, 'بايوس PS1')].join('') : '<span class="no">يشتغل داخل البرنامج</span>';
+}
+async function addKeys(files) {
+  if (!files.length) return;
+  $('#keysStatus').innerHTML = '<span>أرتّبها<span class="dots"></span></span>';
+  const r = await pv.biosAdd(files);
+  toast(r.got?.length ? `🔑 ضفت ${r.got.length} ملف وحطيتها في مكانها` : 'ما قدرت أضيفها');
+  setTimeout(keysStatus, 1500);
+}
+{
+  const dz = $('#keysDrop');
+  dz.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); addKeys([...e.dataTransfer.files].map((f) => pv.pathForFile?.(f) || f.path).filter(Boolean)); });
+  $('#keysPick').onclick = async () => { const f = await pv.pickFile('file'); if (f) addKeys([f]); };
+  $('#keysOpen').onclick = () => pv.romsFolder('bios');
+}
+// ---- plugins: optional extras, switch off what you don't need (lighter app) ----
+const PLUGINS = [
+  ['akai', '🙂', 'أكاي (الشخصية)', 'يطل ويرد عليك بفقاعة كلام'],
+  ['wake', '🎙', 'النداء بالصوت', 'يسمع اسمه دايم (ياخذ شوي من المعالج)'],
+  ['tunes', '💿', 'ألحان الخلفية (القرص)', 'موسيقى هادية لما ما فيه شي شغّال'],
+  ['scenes', '🌄', 'المناظر المتحركة', 'السماء والنجوم والمباني خلف الصفحات'],
+  ['party', '👥', 'تابع معي', 'زر المتابعة مع غيرك في صفحة المشاهدة'],
+  ['battery', '🔋', 'تنبيه شحن اليد والسماعة', 'يقول لك إذا الشحن قرب يخلص'],
+];
+const plugOn = (k) => (data.settings.plugins || {})[k] !== false;
+function applyPlugins() {
+  document.body.classList.toggle('no-akai', !plugOn('akai'));
+  document.body.classList.toggle('no-tunes', !plugOn('tunes'));
+  document.body.classList.toggle('no-scenes', !plugOn('scenes'));
+  document.body.classList.toggle('no-party', !plugOn('party'));
+  document.body.classList.toggle('lite', !!data.settings.lite);
+  document.body.classList.toggle('no-blur', !!data.settings.noBlur);
+  if (!plugOn('tunes')) window.Music?.pause?.();
+}
+function drawPlugins() {
+  $('#pluginList').innerHTML = PLUGINS.map(([k, i, t, d]) => `<label class="plug"><span class="pi">${i}</span><span class="pt"><b>${t}</b><small>${d}</small></span><input type="checkbox" data-plug="${k}" ${(k === 'wake' ? !!data.settings.wakeOn : plugOn(k)) ? 'checked' : ''}></label>`).join('');
+  $('#pluginList').querySelectorAll('[data-plug]').forEach((c) => c.onchange = () => {
+    const k = c.dataset.plug;
+    if (k === 'wake') { $('#setWakeOn').checked = c.checked; saveWake(); return; }
+    (data.settings.plugins ||= {})[k] = c.checked; save(); applyPlugins();
+    toast(c.checked ? 'تشغّلت' : 'طفّيتها');
+  });
+}
+// ---- advanced ----
+$('#advMusicVol').oninput = () => window.Music?.setVol?.(Number($('#advMusicVol').value) / 100);
+$('#advDingVol').oninput = () => { data.settings.dingVol = Number($('#advDingVol').value) / 100; save(); };
+$('#advDuck').onchange = () => { data.settings.duck = $('#advDuck').checked; save(); };
+$('#advLite').onchange = () => { data.settings.lite = $('#advLite').checked; save(); applyPlugins(); };
+$('#advReduceFx').onchange = () => { data.settings.noBlur = $('#advReduceFx').checked; save(); applyPlugins(); };
+$('#advOpenData').onclick = () => pv.openDataDir?.();
+$('#advLogs').onclick = () => { $('#settings').close(); openLogs('ev'); };
 
 // ---------- Voice commands ----------
 const AR_FILLER = /^(?:(?:يا|طيب|لو سمحت|ممكن)\s+)*(?:(?:شغل|شغلي|شغللي|شغل لي|افتح|افتحي|افتح لي|افتحلي|ابي|ابغي|ابغا|ابا|ودني|ودني على|وديني|روح|رح|خذني|ادخل|دخلني|حط|حط لي|حطلي|خل|خلي|خله|ابدا|عطني|play|open|start)\s+)+/;
@@ -2132,10 +2288,45 @@ function voiceCandidates() {
   return c;
 }
 
+// ---------- Music by voice: works inside the app and (only this) from outside it ----------
+// "قدّم الأغنية" / "الأغنية اللي بعدها" / "go to the next song" / "خل الصوت 32" / "ارفع الصوت"…
+const AR_NUM = { 'صفر': 0, 'واحد': 1, 'اثنين': 2, 'ثنين': 2, 'ثلاث': 3, 'ثلاثه': 3, 'اربع': 4, 'اربعه': 4, 'خمس': 5, 'خمسه': 5, 'ست': 6, 'سته': 6, 'سبع': 7, 'سبعه': 7, 'ثمان': 8, 'ثمانيه': 8, 'ثماني': 8, 'تسع': 9, 'تسعه': 9, 'عشر': 10, 'عشره': 10,
+  'عشرين': 20, 'ثلاثين': 30, 'اربعين': 40, 'خمسين': 50, 'ستين': 60, 'سبعين': 70, 'ثمانين': 80, 'تسعين': 90, 'ميه': 100, 'مية': 100, 'ميه': 100, 'نص': 50, 'النص': 50,
+  'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90, 'hundred': 100, 'half': 50 };
+function spokenNumber(t) {
+  const d = String(t).replace(/[٠-٩]/g, (c) => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).match(/\d{1,3}/);
+  if (d) return Math.min(100, Number(d[0]));
+  let n = 0, hit = false;
+  for (const w of normAr(t).split(/\s+|و(?=\S)/)) { const v = AR_NUM[w.replace(/^و/, '')] ?? AR_NUM[w]; if (v !== undefined) { n += v; hit = true; } }
+  return hit ? Math.min(100, n) : null;
+}
+window.musicVoice = function musicVoice(text) {
+  const t = normAr(text).replace(/\s+/g, ' ');
+  if (!t) return null;
+  const song = /(اغنيه|اغاني|الاغنيه|الاغاني|المقطع|الموسيقى|سبوتيفاي|song|track|music|spotify)/i;
+  const say = (msg) => ({ ok: true, msg });
+  if (/(صوت|volume|vol\b|sound|ارفع|نزل|وطي|علي|قصر|خفف)/i.test(t)) {
+    const n = spokenNumber(t);
+    let lv = data.settings.spVol ?? 50;
+    if (n !== null) lv = n;
+    else if (/(ارفع|علي|زيد|اعلى|up|louder|raise)/i.test(t)) lv = Math.min(100, lv + 15);
+    else if (/(نزل|وطي|قصر|خفف|اخفض|down|lower|quieter)/i.test(t)) lv = Math.max(0, lv - 15);
+    else return null;
+    data.settings.spVol = lv; save();
+    pv.setVolume?.(lv, 'spotify').then((r) => { if (r === 'none') pv.setVolume(lv, 'master'); });
+    return say(`🔊 الصوت ${lv}`);
+  }
+  if (/(قدم|بعدها|التالي|التاليه|الجاي|الجايه|سكب|سكيب|غير الاغنيه|غيرها|next|skip)/i.test(t) && (song.test(t) || t.split(' ').length <= 4)) { media('next'); setTimeout(pollSpotify, 900); return say('⏭ الأغنية اللي بعدها'); }
+  if (/(قبلها|السابق|السابقه|رجع الاغنيه|ارجع للاغنيه|previous|prev|last song|go back)/i.test(t) && (song.test(t) || t.split(' ').length <= 4)) { media('prev'); setTimeout(pollSpotify, 900); return say('⏮ الأغنية اللي قبلها'); }
+  if (/(وقف|اسكت|بوز|pause|stop)/i.test(t) && song.test(t)) { media('playpause'); return say('⏸ وقفتها'); }
+  if (/(كمل|شغل|play|resume)/i.test(t) && song.test(t) && !/شغل (لعبه|العاب)/.test(t)) { media('playpause'); return say('▶ كملت'); }
+  return null;
+};
 window.handleVoice = function handleVoice(text) {
   const raw = normAr(text);
   const spoken = raw.replace(AR_FILLER, '').trim() || raw;
   if (!spoken) return { ok: false, msg: 'ما سمعت شي، جرّب مرة ثانية' };
+  const mv = window.musicVoice(text); if (mv) return mv;
   let best = null;
   for (const c of voiceCandidates()) {
     const s = Math.max(phraseScore(spoken, c.ph), 0.97 * phraseScore(raw, c.ph));
@@ -2175,6 +2366,9 @@ window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason
   data = migrate(await pv.load());
   if (!THEMES.some((t) => t.id === data.theme)) data.theme = 'glass';
   try { paths = await pv.paths(); } catch {}
+  try { drawAvatar(); applyPlugins(); } catch (e) { pv.log('look init: ' + e.message); }
+  if (!data.genresV2) { allItems().forEach((i) => { delete i.genres; delete i.genresTried; }); data.genresV2 = true; save(); } // better names for Steam's "Casual" / "Indie"
+  setTimeout(() => fillGenres(), 20000); setInterval(() => fillGenres(), 10 * 60 * 1000);
   const mods = page('mods');
   if (mods && paths.mods && !mods.items.some((i) => i.target === paths.mods) && !data.removed?.['t:' + paths.mods.toLowerCase()]) {
     mods.items.unshift({ id: uid(), name: 'مجلد المودات', target: paths.mods, image: '', categories: [], voice: 'مجلد المودات', icon: await pv.fileIcon(paths.mods) });
@@ -2388,3 +2582,24 @@ window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason
   const stop = () => { vy = 0; };
   document.addEventListener('dragend', stop, true); document.addEventListener('drop', stop, true);
 })();
+
+// ---------- Closing: a goodbye, then the app really quits ----------
+pv.onBye(() => {
+  const name = data?.user?.name ? ` يا ${data.user.name}` : '';
+  const d = document.createElement('div'); d.id = 'byeScreen';
+  d.innerHTML = `<div class="bye-in"><div class="bye-sword">⚔️</div><h1>وداعاً أيها المحارب${esc(name)}</h1><p>نشوفك على خير</p></div>`;
+  document.body.appendChild(d);
+  requestAnimationFrame(() => d.classList.add('show'));
+  window.Akai?.say?.('مع السلامة 👋', 'happy');
+  setTimeout(() => pv.quitNow(), 1900);
+});
+
+// ---------- An update arrived from GitHub ----------
+pv.onUpdate(() => {
+  const b = document.createElement('div'); b.className = 'upd-bar';
+  b.innerHTML = '<span>⬆️ نزل تحديث جديد للبرنامج</span><button class="btn primary sm">طبّقه الحين</button><button class="btn ghost sm">بعدين</button>';
+  document.body.appendChild(b);
+  const [now, later] = b.querySelectorAll('button');
+  now.onclick = () => pv.updateRestart();
+  later.onclick = () => { b.remove(); toast('يتطبق لحاله أول ما تفتح البرنامج مرة ثانية'); };
+});
