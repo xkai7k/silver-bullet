@@ -25,7 +25,11 @@
     ws.onmessage = (e) => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
       if (m.type === 'OPEN') { party.online = true; api.log?.('party online ' + party.id); drawViewers(); }
-      else if (m.type === 'ID-TAKEN') { party.id = newId(); ws.close(); }
+      else if (m.type === 'ID-TAKEN') { // the old session hasn't timed out on the server yet: wait a little, then take it back
+        api.log?.('party id busy, retrying'); ws.onclose = null; ws.close();
+        if ((party.taken = (party.taken || 0) + 1) > 6) { party.id = newId(); try { data.settings.partyId = party.id; save(); } catch {} party.link = `${GUEST_PAGE}?r=${party.id}`; api.qrSvg?.(party.link).then((q) => { party.qr = q; drawPanel(); }); }
+        setTimeout(() => party && connectSig(), 5000);
+      }
       else if (m.type === 'OFFER') onOffer(m.src, m.payload);
       else if (m.type === 'CANDIDATE') { const g = party.guests.get(m.src); if (g && m.payload?.c) { if (g.pc.remoteDescription) g.pc.addIceCandidate(m.payload.c).catch(() => {}); else g.early.push(m.payload.c); } }
       else if (m.type === 'LEAVE' || m.type === 'EXPIRE') dropGuest(m.src);
@@ -45,8 +49,8 @@
     pc.onconnectionstatechange = () => { if (['failed', 'closed'].includes(pc.connectionState)) dropGuest(src); };
     pc.ondatachannel = (e) => {
       g.dc = e.channel;
-      g.dc.onopen = () => { toastP(`👀 ${g.name} دخل يتابع معك`); drawViewers(); pushState(); };
-      g.dc.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } if (m.t === 'req') ask(g, m.what); };
+      g.dc.onopen = () => { api.log?.('party guest joined: ' + g.name); toastP(`👀 ${g.name} دخل يتابع معك`); drawViewers(); pushState(); };
+      g.dc.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } if (m.t === 'req') { api.log?.(`party request from ${g.name}: ${m.what}`); try { ask(g, m.what); } catch (e) { api.log?.('party ask failed: ' + e.message); toastP(`🙋 ${g.name} ${WHAT[m.what] || ''}`); } } };
       g.dc.onclose = () => dropGuest(src);
     };
     await pc.setRemoteDescription({ type: 'offer', sdp: p.sdp });
@@ -169,7 +173,10 @@
 
   async function start() {
     if (party) return openPanel();
-    party = { id: newId(), guests: new Map(), sharing: false, online: false };
+    // the same link every time (so a friend's page reconnects by itself after the app restarts)
+    let id = (typeof data !== 'undefined' && data.settings?.partyId) || newId();
+    try { data.settings.partyId = id; save(); } catch {}
+    party = { id, guests: new Map(), sharing: false, online: false };
     party.link = `${GUEST_PAGE}?r=${party.id}`;
     party.qr = await api.qrSvg?.(party.link).catch(() => '') || '';
     connectSig();
@@ -186,6 +193,8 @@
     drawViewers(); $('#partyPanel')?.remove(); $('#partyReqs').innerHTML = '';
   }
 
+  // the app is closing / reloading: tell the friends, so their page reconnects instead of waiting
+  window.addEventListener('beforeunload', () => { if (!party) return; for (const g of party.guests.values()) { try { g.dc?.send(JSON.stringify({ t: 'restart' })); } catch {} } });
   const btn = $('#wvParty'); if (btn) btn.onclick = start;
   // leaving the watch screen ends it
   $('#wvClose')?.addEventListener('click', () => stop());

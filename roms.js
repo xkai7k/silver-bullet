@@ -888,12 +888,18 @@ function setupRoms(ctx) {
   });
   ipcMain.handle('roms:folder', (_e, which) => shell().openPath(which === 'bios' ? ((ctx.extraBios || []).find((d) => fs.existsSync(d)) || BIOS) : GAMES));
   // Get everything ready ahead of time: configs + the RetroArch cores
-  ipcMain.handle('emu:prepare', async () => {
+  ipcMain.handle('emu:prepare', async (ev) => {
     for (const id of ['duckstation', 'dolphin', 'cemu', 'flycast']) prepare(id);
     const done = [];
-    for (const c of [...new Set(Object.values(CONSOLES).filter((x) => x.core).map((x) => x.core))]) {
+    const list = [...new Set(Object.values(CONSOLES).filter((x) => x.core).map((x) => x.core))];
+    const send = (m) => { try { ev.sender.send('emu:progress', { id: 'cores', name: 'أجهزة RetroArch', ...m }); } catch {} };
+    let i = 0;
+    for (const c of list) {
+      send({ step: 'download', pct: Math.round((i / list.length) * 100), cores: [i, list.length] });
       try { await core(c); done.push(c); } catch (e) { log('core failed', c, e.message); }
+      i++;
     }
+    send({ step: 'done' });
     placeBios('ps1'); placeBios('ps2');
     return done;
   });

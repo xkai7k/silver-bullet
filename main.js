@@ -451,7 +451,7 @@ async function download(url, file, onPct) {
     if (done) break;
     got += value.length;
     if (!out.write(Buffer.from(value))) await new Promise((r) => out.once('drain', r));
-    if (total && Date.now() - last > 400) { last = Date.now(); onPct(Math.round((got / total) * 100)); }
+    if (Date.now() - last > 400) { last = Date.now(); onPct(total ? Math.round((got / total) * 100) : 0, got, total); }
   }
   await new Promise((r, j) => out.end((e) => (e ? j(e) : r())));
   return got;
@@ -631,18 +631,25 @@ ipcMain.handle('emu:install', (ev, ids) => {
   const send = (m) => { try { ev.sender.send('emu:progress', m); } catch {} };
   emuInstalling = (async () => {
     const results = [];
-    for (const e of EMU_CATALOG.filter((x) => !ids || ids.includes(x.id))) {
+    const wanted = EMU_CATALOG.filter((x) => !ids || ids.includes(x.id));
+    // tell the screen up front how many have to come down, so it can show "3 of 9, about 4 min left"
+    const has = (e) => { const x = (installedEmus().find((y) => y.id === e.id) || {}).exe; return (x && fs.existsSync(x)) || (e.existing || []).some((p) => fs.existsSync(p)) || !!foundExe(e.exe); };
+    const queue = wanted.filter((e) => !(e.localOnly) && !has(e));
+    send({ step: 'plan', n: queue.length, names: queue.map((e) => e.name) });
+    let idx = 0;
+    for (const e of wanted) {
       let exe = (installedEmus().find((x) => x.id === e.id) || {}).exe;
       if (!exe || !fs.existsSync(exe)) exe = (e.existing || []).find((p) => fs.existsSync(p)) || foundExe(e.exe);
       if (e.localOnly && !exe) continue;
       if (exe && fs.existsSync(exe)) { results.push({ id: e.id, name: e.name, desc: e.desc, platform: e.platform || '', exe, ok: true, already: true }); continue; }
       const dir = path.join(EMU_ROOT, e.name.replace(/[^\w.-]+/g, ''));
+      idx++;
       try {
-        send({ id: e.id, name: e.name, step: 'download', pct: 0 });
+        send({ id: e.id, name: e.name, step: 'download', pct: 0, idx, n: queue.length });
         const { url, file } = await resolveUrl(e);
         if (!url) throw new Error('download link not found');
         const tmp = path.join(app.getPath('temp'), 'preview-' + file);
-        const bytes = await download(url, tmp, (pct) => send({ id: e.id, name: e.name, step: 'download', pct }));
+        const bytes = await download(url, tmp, (pct, got, total) => send({ id: e.id, name: e.name, step: 'download', pct, got, total, idx, n: queue.length }));
         send({ id: e.id, name: e.name, step: 'extract' });
         await extract(tmp, dir);
         try { fs.unlinkSync(tmp); } catch {}

@@ -54,9 +54,11 @@
     const proc = ctx.createScriptProcessor(2048, 1, 1);
     const chunks = [];
     let speaking = false, silent = 0, total = 0, done = false, floor = 0.01;
+    try { if (ctx.state === 'suspended') await ctx.resume(); } catch {}
     return new Promise((resolve) => {
+      const hard = setTimeout(() => { pv.log('voice: mic gave no sound, stopping'); finish(); }, 9000); // never hang if the mic is silent/blocked
       const finish = () => {
-        if (done) return; done = true;
+        if (done) return; done = true; clearTimeout(hard);
         try { proc.disconnect(); src.disconnect(); } catch {}
         stream.getTracks().forEach((t) => t.stop());
         ctx.close();
@@ -89,25 +91,31 @@
     show(res.ok ? `✓ ${res.msg}` : res.msg, res.ok ? 'ok' : 'error');
     if (res.ok) window.Akai?.say(`تم: ${res.msg}`, 'happy'); else window.Akai?.fail(res.msg);
   }
+  // nothing may leave Akai stuck: every slow step has a limit
+  function withTimeout(p, ms, what) {
+    let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error('timeout ' + what)), ms); })]).finally(() => clearTimeout(t));
+  }
   async function start() {
     if (busy) { stopNow?.(); return; } // second press = stop listening now
     busy = true;
     try {
-      const asr = await load();
+      const asr = await withTimeout(load(), 120000, 'load');
       show('أسمعك… قل اسم اللي تبغاه', 'listen');
       window.Akai?.listen();
       const { audio, speaking } = await record();
       stopNow = null;
       if (!speaking) { show('ما سمعت شي', 'error'); return; }
       show('لحظة…', 'think');
-      const out = await asr(audio, { language: 'arabic', task: 'transcribe' });
+      const out = await withTimeout(asr(audio, { language: 'arabic', task: 'transcribe' }), 25000, 'asr');
       const text = (Array.isArray(out) ? out[0]?.text : out?.text || '').trim();
+      pv.log(`voice: command "${text}"`);
+      if (!text) { show('ما فهمت، قلها مرة ثانية', 'error'); return; }
       respond(text);
     } catch (e) {
       console.error(e);
       const m = String(e?.message || e);
       pv.log(`voice: ${e?.stack || m}`);
-      show(/Permission|NotAllowed|NotFound/i.test(m) ? 'ما قدرت أوصل للمايك. تأكد إنه موصول ومسموح في إعدادات ويندوز' :
+      show(/^timeout/.test(m) ? 'علّقت شوي، جرّب مرة ثانية' : /Permission|NotAllowed|NotFound/i.test(m) ? 'ما قدرت أوصل للمايك. تأكد إنه موصول ومسموح في إعدادات ويندوز' :
         /fetch|network|Failed to load/i.test(m) ? 'أحتاج إنترنت أول مرة عشان أنزّل نموذج الصوت' : `مشكلة بالصوت: ${m}`, 'error');
     } finally {
       busy = false; stopNow = null;
@@ -193,7 +201,7 @@
         try {
           const audio = new Float32Array(len); let o = 0;
           for (const c of chunks) { audio.set(c, o); o += c.length; }
-          const out = await asr(audio, { language: 'arabic', task: 'transcribe' });
+          const out = await withTimeout(asr(audio, { language: 'arabic', task: 'transcribe' }), 20000, 'wake asr');
           const text = (Array.isArray(out) ? out[0]?.text : out?.text || '').trim();
           if (text && data.settings?.voiceDebug) pv.log(`voice heard: ${text}`);
           if (document.body.classList.contains('playing-video')) return;
@@ -209,8 +217,7 @@
           pv.log(`voice: wake word heard ("${text}")`);
           ding();
           if (rest.replace(/\s/g, '').length >= 2) { respond(rest); hideLater(); }
-          else if (window.Akai?.isSulking()) window.Akai.listen();
-          else { window.Akai?.listen(); start(); }
+          else { window.Akai?.listen(); start(); } // even when he sulks he still listens, so he never just goes quiet
         } catch (e) { pv.log('voice: wake failed ' + (e?.message || e)); } finally {
           working = false;
           if (pending) { seg = pending; pending = null; flush(); }
@@ -231,6 +238,14 @@
         pre.push(d); if (pre.length > 6) pre.shift(); // keep the start of the word (~0.75 s)
       };
       src.connect(proc); proc.connect(ctx.destination);
+      try { if (ctx.state === 'suspended') await ctx.resume(); } catch {}
+      // mic unplugged / Windows took it away: start listening again by itself
+      stream.getTracks().forEach((t) => t.addEventListener('ended', () => { pv.log('voice: mic ended, restarting wake'); if (wake === w) w.stop(); setTimeout(wakeSync, 2000); }));
+      let lastHeard = Date.now(); const watch = setInterval(() => {
+        if (wake !== w) return clearInterval(watch);
+        if (ctx.state !== 'running' && Date.now() - lastHeard > 5000) { pv.log('voice: wake audio stalled, restarting'); clearInterval(watch); w.stop(); setTimeout(wakeSync, 1000); }
+      }, 5000);
+      const op = proc.onaudioprocess; proc.onaudioprocess = (e) => { lastHeard = Date.now(); op(e); };
       pv.log('voice: listening for "Akai"');
       return w;
     } catch (e) { pv.log('voice: wake start failed ' + (e?.message || e)); wake = null; }

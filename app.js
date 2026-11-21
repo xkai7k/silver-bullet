@@ -1227,13 +1227,35 @@ const emuProg = document.createElement('div');
 emuProg.id = 'emuProg'; emuProg.hidden = true;
 document.body.appendChild(emuProg);
 const emuRows = {};
+let emuPlan = null; // { n, t0 } from the main side: how many emulators have to come down
+const emb = (b) => (b / 1048576).toFixed(b > 104857600 ? 0 : 1);
+const emins = (s) => s < 60 ? 'أقل من دقيقة' : s < 3600 ? `${Math.ceil(s / 60)} دقيقة` : `${Math.floor(s / 3600)} ساعة و${Math.ceil((s % 3600) / 60)} دقيقة`;
 pv.onEmuProgress((m) => {
+  if (m.step === 'plan') { emuPlan = { n: m.n, t0: Date.now() }; if (!m.n) return; for (const k in emuRows) delete emuRows[k]; for (const nm of m.names || []) emuRows[nm] = { name: nm, step: 'wait' }; }
+  else { const o = emuRows[m.name]; if (m.step === 'download' && m.got) { m.t0 = o?.t0 || Date.now(); m.speed = m.got / Math.max(0.5, (Date.now() - m.t0) / 1000); } emuRows[m.name] = { ...(o || {}), ...m }; }
   emuProg.hidden = false;
-  emuRows[m.id] = m;
-  const label = (r) => r.step === 'download' ? `⬇ ${r.pct || 0}%` : r.step === 'extract' ? '📦 فك الضغط' : r.step === 'done' ? '✓ جاهز' : '✗ ما نزل';
-  emuProg.innerHTML = `<b>تحميل المحاكيات</b>` + Object.values(emuRows).map((r) =>
-    `<div class="ep-row ${r.step}"><span>${esc(r.name)}</span><small>${label(r)}</small>${r.step === 'download' ? `<i style="--p:${r.pct || 0}%"></i>` : ''}</div>`).join('');
-  emuProg.scrollTop = emuProg.scrollHeight;
+  const rows = Object.values(emuRows);
+  const label = (r) => r.step === 'wait' ? '⏳ بالدور' : r.step === 'download' ? (r.cores ? `${r.cores[0]} من ${r.cores[1]}` : `⬇ ${r.pct || 0}%` + (r.total ? ` · ${emb(r.got || 0)} من ${emb(r.total)} MB` : r.got ? ` · ${emb(r.got)} MB` : '')) : r.step === 'extract' ? '📦 فك الضغط' : r.step === 'done' ? '✓ جاهز' : '✗ ما نزل';
+  // the big line on top: how far along all of it is, and roughly how long is left
+  const emus = rows.filter((r) => r.id !== 'cores');
+  const n = emuPlan?.n || emus.length;
+  const fin = emus.filter((r) => r.step === 'done' || r.step === 'fail').length;
+  const cur = emus.find((r) => r.step === 'download' || r.step === 'extract');
+  const frac = n ? Math.min(1, (fin + (cur ? (cur.step === 'extract' ? 0.95 : (cur.pct || 0) / 100) : 0)) / n) : 1;
+  const secs = emuPlan && frac > 0.02 ? ((Date.now() - emuPlan.t0) / 1000) * (1 - frac) / frac : 0;
+  const cores = rows.find((r) => r.id === 'cores');
+  let head, sub;
+  if (n && fin < n) { head = `أجهّز المحاكيات… ${Math.min(n, fin + 1)} من ${n}`; sub = (secs ? `باقي تقريباً ${emins(secs)}` : 'أحسب الوقت الباقي…') + (cur?.speed ? ` · ${emb(cur.speed)} MB/ث` : ''); }
+  else if (cores && cores.step !== 'done') { head = 'آخر خطوة: أجهّز أجهزة RetroArch'; sub = `${cores.cores?.[0] || 0} من ${cores.cores?.[1] || '…'}`; }
+  else { head = '✓ كل شي جاهز'; sub = 'تقدر تلعب الحين'; }
+  const all = cores && cores.step !== 'done' && (!n || fin >= n) ? (cores.pct || 0) : Math.round(frac * 100);
+  emuProg.innerHTML = `<button class="ep-x" title="صغّرها">–</button><b>${esc(head)}</b><div class="ep-sub">${esc(sub)} <span>${all}%</span></div><div class="ep-bar"><i style="width:${all}%"></i></div>` +
+    `<div class="ep-list">` + rows.map((r) =>
+    `<div class="ep-row ${r.step}"><span>${esc(r.name)}</span><small>${label(r)}</small>${r.step === 'download' ? `<i style="--p:${r.pct || 0}%"></i>` : ''}</div>`).join('') + `</div>`;
+  emuProg.classList.toggle('mini', !!emuProg.dataset.mini);
+  emuProg.querySelector('.ep-x').onclick = () => { emuProg.dataset.mini = emuProg.dataset.mini ? '' : '1'; emuProg.classList.toggle('mini', !!emuProg.dataset.mini); };
+  const cl = emuProg.querySelector('.ep-list'); const act = cl.querySelector('.download, .extract'); if (act) act.scrollIntoView({ block: 'nearest' });
+  if (head.startsWith('✓')) setTimeout(() => { if (!Object.values(emuRows).some((r) => ['download', 'extract', 'wait'].includes(r.step))) emuProg.hidden = true; }, 8000);
 });
 async function installEmulators(ids) {
   toast('🕹️ أحمّل المحاكيات المعروفة… تقدر تكمل شغلك عادي');
@@ -1247,7 +1269,6 @@ async function installEmulators(ids) {
   pv.emuPrepare().then((c) => { pv.log('emulators prepared, cores: ' + c.join(',')); data.emuPrepV1 = true; save(); });
   render();
   toast(bad.length ? `✓ ${ok} محاكي جاهز، وما نزل: ${bad.map((b) => b.name).join('، ')}` : `✓ كل المحاكيات جاهزة (${ok})`);
-  setTimeout(() => { emuProg.hidden = true; }, 6000);
 }
 window.installEmulators = installEmulators;
 

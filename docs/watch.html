@@ -91,7 +91,7 @@
   if (!host) $('#bad').hidden = false;
   try { $('#name').value = localStorage.getItem('sb-name') || ''; } catch {}
 
-  let ws, hb, pc, dc, me, state = null, mode = null, ytPlayer = null, ytReady = false, early = [], retry = 0, ended = false, prevShare = false, picked = false;
+  let ws, hb, pc, dc, me, state = null, mode = null, ytPlayer = null, ytReady = false, early = [], retry = 0, ended = false, prevShare = false, picked = false, lastState = 0;
   const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0'); };
   const now = () => state ? state.time + (state.playing ? (Date.now() - state.recv) / 1000 : 0) : 0;
   const setStatus = (t, on) => { $('#status').textContent = t; $('#dot').classList.toggle('on', !!on); };
@@ -129,11 +129,11 @@
     pc.ontrack = (e) => { stream.addTrack(e.track); const v = $('#vid'); if (v.srcObject !== stream) v.srcObject = stream; v.play().catch(() => { $('#unmute').hidden = false; }); };
     pc.onicecandidate = (e) => e.candidate && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { c: e.candidate, connectionId: 'sb' } }));
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') { retry = 0; setStatus('متصل', true); }
+      if (pc.connectionState === 'connected') { retry = 0; setStatus('متصل', true); if (/مو متصل/.test($('#sent').textContent)) $('#sent').textContent = ''; }
       if (pc.connectionState === 'failed') lost('انقطع الاتصال. يمكن الشبكة تمنع الاتصال المباشر.');
     };
     dc = pc.createDataChannel('sb');
-    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === 'state') onState(m); if (m.t === 'answer') { $('#sent').textContent = m.yes ? '✓ وافق على طلبك' : '✕ ما وافق هالمرة'; setTimeout(() => { $('#sent').textContent = ''; }, 4000); } if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } };
+    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === 'state') { lastState = Date.now(); onState(m); } if (m.t === 'restart') { lastState = 0; lost('البرنامج عنده يعيد التشغيل… أرجع أتصل لحالي'); } if (m.t === 'answer') { $('#sent').textContent = m.yes ? '✓ وافق على طلبك' : '✕ ما وافق هالمرة'; setTimeout(() => { $('#sent').textContent = ''; }, 4000); } if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } };
     dc.onclose = () => { if (!ended) lost('انقطع الاتصال…'); };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -146,9 +146,17 @@
     setStatus(t, false);
     if (!state) $('#msg').innerHTML = `<div>${esc(t)}</div><button class="ghost" onclick="location.reload()">جرّب مرة ثانية</button>`;
     $('#msg').hidden = false;
-    if (!ended && retry++ < 3 && state) setTimeout(() => call(localStorage.getItem('sb-name') || 'ضيف'), 3000);
+    if (!ended && state) { retry++; clearTimeout(lost.t); lost.t = setTimeout(() => reconnect(), Math.min(15000, 3000 * retry)); } // keeps trying: the app may just be restarting
   }
 
+  // no news from him for a few seconds = the connection is gone (his app restarted, or the network dropped)
+  setInterval(() => { if (state && !ended && lastState && Date.now() - lastState > 7000) { lastState = 0; lost('انقطع الاتصال… أحاول أرجع'); } }, 2000);
+  function reconnect() {
+    if (ended) return;
+    setStatus('أحاول أرجع أتصل…', false);
+    try { pc?.close(); } catch {}
+    if (!ws || ws.readyState > 1) connect(localStorage.getItem('sb-name') || 'ضيف'); else call(localStorage.getItem('sb-name') || 'ضيف');
+  }
   function onState(m) {
     const first = !state;
     state = { ...m, recv: Date.now() };
@@ -201,7 +209,7 @@
 
   let lastReq = 0;
   function req(what, label) {
-    if (!dc || dc.readyState !== 'open') return;
+    if (!dc || dc.readyState !== 'open' || !lastState || Date.now() - lastState > 7000) { $('#sent').textContent = '⚠️ مو متصل الحين، أحاول أرجع أتصل… جرّب بعد ثواني'; reconnect(); return; }
     if (Date.now() - lastReq < 3000) { $('#sent').textContent = 'انتظر شوي قبل طلب ثاني'; return; }
     lastReq = Date.now();
     dc.send(JSON.stringify({ t: 'req', what }));
