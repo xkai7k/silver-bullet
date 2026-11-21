@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>تابع معي · Silver Bullet</title>
+<meta name="theme-color" content="#0d0f14">
+<style>
+  :root { --bg:#0d0f14; --card:#171a22; --line:#262b37; --text:#eef1f6; --dim:#9aa3b2; --accent:#e8c26a; --ok:#3ecf8e; --bad:#ff6b6b; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font-family: system-ui, "Segoe UI", Tahoma, sans-serif; }
+  body { min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:16px; gap:14px; }
+  .wrap { width:100%; max-width:960px; display:flex; flex-direction:column; gap:14px; }
+  h1 { font-size:20px; margin:4px 0 0; display:flex; align-items:center; gap:8px; }
+  h1 small { color:var(--dim); font-weight:400; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; }
+  input { width:100%; padding:14px; border-radius:12px; border:1px solid var(--line); background:#0f1218; color:var(--text); font-size:17px; }
+  button { font:inherit; cursor:pointer; border:0; border-radius:12px; padding:13px 18px; font-size:16px; font-weight:700; background:var(--accent); color:#1a1408; }
+  button.ghost { background:#222735; color:var(--text); font-weight:600; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  .row > * { flex:1; min-width:140px; }
+  .stage { position:relative; width:100%; aspect-ratio:16/9; background:#000; border-radius:16px; overflow:hidden; border:1px solid var(--line); }
+  .stage video, .stage #yt, .stage iframe { position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+  .stage .msg { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:20px; text-align:center; color:var(--dim); }
+  .now { font-size:18px; font-weight:700; line-height:1.4; word-break:break-word; }
+  .meta { color:var(--dim); font-size:14px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+  .pill { padding:4px 10px; border-radius:999px; background:#222735; font-size:13px; }
+  .pill.live { background:#3a1518; color:#ffb3b3; }
+  .tabs { display:flex; gap:8px; }
+  .tabs button { flex:1; padding:10px; font-size:14px; }
+  .tabs button.on { background:var(--accent); color:#1a1408; }
+  .tabs button:not(.on) { background:#222735; color:var(--text); }
+  .who { color:var(--dim); font-size:14px; }
+  .who b { color:var(--text); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--bad); display:inline-block; }
+  .dot.on { background:var(--ok); }
+  .sent { color:var(--ok); font-size:14px; min-height:20px; text-align:center; }
+  .dots::after { content:''; animation:d 1.2s steps(4) infinite; }
+  @keyframes d { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} }
+  a.open { display:inline-block; text-decoration:none; background:var(--accent); color:#1a1408; padding:12px 18px; border-radius:12px; font-weight:700; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>👥 تابع معي <small>Silver Bullet</small></h1>
+
+  <div class="card" id="join">
+    <p style="margin:0 0 10px">اكتب اسمك عشان يطلع له إنك تتابع معه:</p>
+    <div class="row"><input id="name" maxlength="24" placeholder="اسمك" autocomplete="nickname"><button id="go">ادخل 👀</button></div>
+    <p id="bad" style="color:var(--bad);margin:10px 0 0" hidden>الرابط ناقص. اطلب منه يرسل الرابط مرة ثانية.</p>
+  </div>
+
+  <div id="room" hidden>
+    <div class="stage" id="stage">
+      <video id="vid" playsinline autoplay hidden></video>
+      <div id="yt" hidden></div>
+      <div class="msg" id="msg"><div>يتصل<span class="dots"></span></div></div>
+    </div>
+
+    <div class="tabs" id="tabs" hidden>
+      <button data-m="screen">📺 شاشته</button>
+      <button data-m="sync">🔁 عندي (متزامن)</button>
+    </div>
+
+    <div class="card">
+      <div class="now" id="now">—</div>
+      <div class="meta"><span class="dot" id="dot"></span><span id="status">يتصل…</span><span class="pill" id="clock" hidden></span><span class="pill live" id="live" hidden>🔴 بث شاشته</span></div>
+      <div id="openHere" style="margin-top:12px" hidden></div>
+    </div>
+
+    <div class="row">
+      <button class="ghost" id="rToggle">⏯ اطلب إيقاف / تشغيل</button>
+      <button class="ghost" id="rBack">⏪ اطلب يرجّع شوي</button>
+    </div>
+    <div class="sent" id="sent"></div>
+    <button class="ghost" id="unmute" hidden>🔊 شغّل الصوت</button>
+    <div class="who" id="who"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SIG = 'wss://0.peerjs.com/peerjs?key=peerjs';
+  const ICE = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }];
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const host = new URLSearchParams(location.search).get('r') || location.hash.slice(1);
+  if (!host) $('#bad').hidden = false;
+  try { $('#name').value = localStorage.getItem('sb-name') || ''; } catch {}
+
+  let ws, hb, pc, dc, me, state = null, mode = null, ytPlayer = null, ytReady = false, early = [], retry = 0, ended = false, prevShare = false, picked = false;
+  const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0'); };
+  const now = () => state ? state.time + (state.playing ? (Date.now() - state.recv) / 1000 : 0) : 0;
+  const setStatus = (t, on) => { $('#status').textContent = t; $('#dot').classList.toggle('on', !!on); };
+
+  $('#go').onclick = () => {
+    const n = $('#name').value.trim();
+    if (!n) { $('#name').focus(); return; }
+    if (!host) return;
+    try { localStorage.setItem('sb-name', n); } catch {}
+    $('#join').hidden = true; $('#room').hidden = false;
+    connect(n);
+  };
+  $('#name').onkeydown = (e) => { if (e.key === 'Enter') $('#go').click(); };
+
+  function connect(name) {
+    me = 'g' + Math.random().toString(36).slice(2, 12);
+    ws = new WebSocket(`${SIG}&id=${me}&token=${Math.random().toString(36).slice(2, 12)}&version=1.5.4`);
+    ws.onopen = () => { clearInterval(hb); hb = setInterval(() => { try { ws.send('{"type":"HEARTBEAT"}'); } catch {} }, 5000); };
+    ws.onmessage = async (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.type === 'OPEN') call(name);
+      else if (m.type === 'ANSWER' && pc) { await pc.setRemoteDescription({ type: 'answer', sdp: m.payload.sdp }).catch(() => {}); for (const c of early.splice(0)) pc.addIceCandidate(c).catch(() => {}); }
+      else if (m.type === 'CANDIDATE' && pc && m.payload?.c) { if (pc.remoteDescription) pc.addIceCandidate(m.payload.c).catch(() => {}); else early.push(m.payload.c); }
+      else if (m.type === 'EXPIRE') { lost('ما لقيته. يمكن قفل "تابع معي" أو البرنامج.'); }
+    };
+    ws.onclose = () => clearInterval(hb);
+  }
+
+  async function call(name) {
+    try { pc?.close(); } catch {}
+    pc = new RTCPeerConnection({ iceServers: ICE });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    const stream = new MediaStream();
+    pc.ontrack = (e) => { stream.addTrack(e.track); const v = $('#vid'); if (v.srcObject !== stream) v.srcObject = stream; v.play().catch(() => { $('#unmute').hidden = false; }); };
+    pc.onicecandidate = (e) => e.candidate && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { c: e.candidate, connectionId: 'sb' } }));
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') { retry = 0; setStatus('متصل', true); }
+      if (pc.connectionState === 'failed') lost('انقطع الاتصال. يمكن الشبكة تمنع الاتصال المباشر.');
+    };
+    dc = pc.createDataChannel('sb');
+    dc.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === 'state') onState(m); if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } };
+    dc.onclose = () => { if (!ended) lost('انقطع الاتصال…'); };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({ type: 'OFFER', dst: host, payload: { sdp: offer.sdp, name, type: 'media', connectionId: 'sb' } }));
+    setStatus('ينتظر الرد…');
+    setTimeout(() => { if (!state && !ended) lost('ما رد. تأكد إن "تابع معي" شغّال عنده والبرنامج مفتوح.'); }, 20000);
+  }
+
+  function lost(t) {
+    setStatus(t, false);
+    if (!state) $('#msg').innerHTML = `<div>${esc(t)}</div><button class="ghost" onclick="location.reload()">جرّب مرة ثانية</button>`;
+    $('#msg').hidden = false;
+    if (!ended && retry++ < 3 && state) setTimeout(() => call(localStorage.getItem('sb-name') || 'ضيف'), 3000);
+  }
+
+  function onState(m) {
+    const first = !state;
+    state = { ...m, recv: Date.now() };
+    $('#now').textContent = m.title || 'ينتظر يختار شيء يتابعه…';
+    $('#clock').hidden = !m.dur; $('#clock').textContent = `${fmt(m.time)} / ${fmt(m.dur)}${m.playing ? '' : ' ⏸'}`;
+    $('#live').hidden = !m.sharing;
+    $('#who').innerHTML = m.viewers?.length ? `👀 يتابعون الحين: <b>${m.viewers.map(esc).join('، ')}</b>` : '';
+    setStatus(m.playing ? 'يشغّل' : (m.title ? 'موقف' : 'متصل'), true);
+    // pick what to show: his screen if he shares, otherwise play it here in sync
+    const can = { screen: m.sharing, sync: !!m.yt };
+    $('#tabs').hidden = !(can.screen && can.sync);
+    if (m.sharing && !prevShare && !picked) mode = 'screen'; // he just started sharing: show it
+    prevShare = !!m.sharing;
+    if (!mode || !can[mode]) mode = can.screen ? 'screen' : (can.sync ? 'sync' : 'none');
+    for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.m === mode);
+    show();
+    if (first) setStatus('متصل', true);
+  }
+  document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => { picked = true; mode = b.dataset.m; onState(state); });
+
+  function show() {
+    const v = $('#vid'), y = $('#yt'), msg = $('#msg'), open = $('#openHere');
+    v.hidden = mode !== 'screen'; y.hidden = mode !== 'sync';
+    if (mode !== 'screen') { try { v.muted = true; } catch {} } else { try { v.muted = false; } catch {} v.play().catch(() => { $('#unmute').hidden = false; }); }
+    if (mode === 'sync') syncYT(); else if (ytPlayer?.pauseVideo && ytReady) ytPlayer.pauseVideo();
+    msg.hidden = mode !== 'none';
+    if (mode === 'none') msg.innerHTML = state.title ? `<div>شغّله على حسابك وتابع معه 👇</div>` : '<div>ينتظر يختار شيء…</div>';
+    // something he watches on a site: open it on your side, at the same minute
+    const ext = state.url && !state.yt && !/^about:/.test(state.url);
+    open.hidden = !ext;
+    if (ext) open.innerHTML = `<a class="open" target="_blank" rel="noopener" href="${esc(state.url)}">↗ افتحه عندك</a> <span class="who">وروح للدقيقة <b>${fmt(now())}</b></span>`;
+  }
+
+  function syncYT() {
+    if (!state?.yt) return;
+    if (!window.YT) { if (!document.querySelector('#ytapi')) { const s = document.createElement('script'); s.id = 'ytapi'; s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s); } window.onYouTubeIframeAPIReady = syncYT; return; }
+    if (!window.YT.Player) return;
+    if (!ytPlayer) {
+      ytPlayer = new YT.Player('yt', { videoId: state.yt, playerVars: { playsinline: 1, rel: 0, start: Math.floor(now()) }, events: { onReady: () => { ytReady = true; syncYT(); } } });
+      ytPlayer._vid = state.yt; return;
+    }
+    if (!ytReady) return;
+    if (ytPlayer._vid !== state.yt) { ytPlayer._vid = state.yt; ytPlayer.loadVideoById(state.yt, now()); return; }
+    const t = now(), cur = ytPlayer.getCurrentTime?.() || 0;
+    if (Math.abs(cur - t) > 2.5) ytPlayer.seekTo(t, true);
+    const ps = ytPlayer.getPlayerState?.();
+    if (state.playing && ps !== 1 && ps !== 3) ytPlayer.playVideo();
+    if (!state.playing && ps === 1) ytPlayer.pauseVideo();
+  }
+
+  let lastReq = 0;
+  function req(what, label) {
+    if (!dc || dc.readyState !== 'open') return;
+    if (Date.now() - lastReq < 3000) { $('#sent').textContent = 'انتظر شوي قبل طلب ثاني'; return; }
+    lastReq = Date.now();
+    dc.send(JSON.stringify({ t: 'req', what }));
+    $('#sent').textContent = `✓ وصله طلبك: ${label}. هو يقرر.`;
+    setTimeout(() => { $('#sent').textContent = ''; }, 4000);
+  }
+  $('#rToggle').onclick = () => req('toggle', 'إيقاف / تشغيل');
+  $('#rBack').onclick = () => req('back', 'يرجّع شوي');
+  $('#unmute').onclick = () => { const v = $('#vid'); v.muted = false; v.play().then(() => { $('#unmute').hidden = true; }).catch(() => {}); };
+  setInterval(() => { if (state?.dur) $('#clock').textContent = `${fmt(now())} / ${fmt(state.dur)}${state.playing ? '' : ' ⏸'}`; if (mode === 'sync') syncYT(); }, 1000);
+})();
+</script>
+</body>
+</html>

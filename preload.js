@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('api', {
   checkImage: (u) => ipcRenderer.invoke('cover:check', u),
   videoState: (wcId) => ipcRenderer.invoke('video:state', wcId),
   videoSeek: (wcId, t) => ipcRenderer.invoke('video:seek', wcId, t),
+  videoCtl: (wcId, what, arg) => ipcRenderer.invoke('video:ctl', wcId, what, arg),
+  qrSvg: (text) => ipcRenderer.invoke('qr:svg', text),
   mediaKey: (k) => ipcRenderer.invoke('media:key', k),
   spotifyNow: () => ipcRenderer.invoke('spotify:now'),
   mediaNow: (thumb) => ipcRenderer.invoke('media:now', thumb),

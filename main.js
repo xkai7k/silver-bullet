@@ -70,6 +70,16 @@ function createWindow() {
   win.webContents.on('render-process-gone', (_e, d) => log('renderer gone:', d.reason));
   win.webContents.on('did-fail-load', (_e, code, desc) => log('load failed:', code, desc));
   win.loadFile(path.join(__dirname, 'index.html'));
+  // "Watch with me" → share my screen: friends see this window (with its sound), nothing else on the PC
+  try {
+    session.defaultSession.setDisplayMediaRequestHandler((_req, cb) => {
+      require('electron').desktopCapturer.getSources({ types: ['window', 'screen'] }).then((srcs) => {
+        const id = win.isDestroyed() ? '' : win.getMediaSourceId();
+        const s = srcs.find((x) => x.id === id) || srcs.find((x) => x.id.startsWith('screen')) || srcs[0];
+        cb(s ? { video: s, audio: 'loopback' } : {});
+      }).catch(() => cb({}));
+    });
+  } catch (e) { log('screen share setup failed', e.message); }
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
   win.on('page-title-updated', (e) => e.preventDefault());
   // The whole interface scales with the window, so it looks right windowed, borderless or full screen
@@ -1094,14 +1104,7 @@ ipcMain.handle('share:start', async (_e, groups) => {
     server.listen(8765, '0.0.0.0', () => resolve(server.address().port));
   });
   share = { server, token, files, url: `http://${ip}:${port}/?t=${token}` };
-  let qrSvg = '';
-  try {
-    const QRCode = require('./qr/index.js'), L = require('./qr/QRErrorCorrectLevel.js');
-    const q = new QRCode(-1, L.M); q.addData(share.url); q.make();
-    const n = q.getModuleCount(), m = 2; let d = '';
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
-    qrSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + m * 2} ${n + m * 2}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
-  } catch (e) { log('qr failed', e.message); }
+  const qrSvg = qrSvgOf(share.url);
   share.timer = setTimeout(stopShare, 30 * 60 * 1000);
   log('share started', files.length, 'files on', ip, port);
   return { url: share.url, count: files.length, qr: qrSvg };
@@ -1312,6 +1315,26 @@ ipcMain.handle('spotify:now', () => new Promise((resolve) => {
 }));
 
 // ---------- Video position inside web tabs (works in embedded players too) ----------
+function qrSvgOf(text) {
+  try {
+    const QRCode = require('./qr/index.js'), L = require('./qr/QRErrorCorrectLevel.js');
+    const q = new QRCode(-1, L.M); q.addData(text); q.make();
+    const n = q.getModuleCount(), m = 2; let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + m * 2} ${n + m * 2}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  } catch (e) { log('qr failed', e.message); return ''; }
+}
+ipcMain.handle('qr:svg', (_e, text) => qrSvgOf(String(text || '')));
+// "Watch with me": the friend asked to pause / play / go back a bit, and you said yes
+ipcMain.handle('video:ctl', (_e, wcId, what, arg) => eachFrame(wcId, (f) => f.executeJavaScript(`(() => {
+  const vids = [...document.querySelectorAll('video')].filter(v => v.duration && isFinite(v.duration) && v.duration > 30);
+  if (!vids.length) return null;
+  const v = vids.sort((a, b) => b.duration - a.duration)[0];
+  const w = ${JSON.stringify(String(what))};
+  if (w === 'toggle') { if (v.paused) v.play(); else v.pause(); }
+  else if (w === 'back') v.currentTime = Math.max(0, v.currentTime - ${Number(arg) || 10});
+  return true;
+})()`)));
 const VIDEO_JS = `(() => {
   const vids = [...document.querySelectorAll('video')].filter(v => v.duration && isFinite(v.duration) && v.duration > 30);
   if (!vids.length) return null;
