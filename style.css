@@ -1888,3 +1888,6 @@ body.no-blur * { backdrop-filter: none !important; -webkit-backdrop-filter: none
 .feat h3 { margin: 10px 0; font-size: 20px; } .feat ul { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 10px; line-height: 1.7; }
 #helpDlg { width: min(860px, 94vw); }
 .upd-bar { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 900; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 16px; background: var(--bg); border: 1px solid var(--accent); box-shadow: 0 14px 40px rgba(0,0,0,.5); font-weight: 700; }
+.tor-share { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; padding: 10px 14px; border-radius: 14px; background: var(--card); font-size: 14px; }
+.tor-share span { flex: 1; min-width: 220px; }
+body.lang-en .empty, body.lang-en .hint { direction: ltr; text-align: left; }

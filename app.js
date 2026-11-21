@@ -4,7 +4,7 @@ const pv = {
   save: async (d) => { try { localStorage.setItem('preview-data', JSON.stringify(d)); } catch {} },
   launch: async (t) => { window.open(t, '_blank'); return ''; },
   pickFile: async () => null,
-  pickDir: async () => null,
+  pickDir: async () => null, torShareSet: async () => '', torShareGet: async () => '', torSharePut: async () => false, onTorShare: () => {},
   fileIcon: async () => null,
   fileInfo: async () => ({ exists: false }),
   pathForFile: () => '',
@@ -20,7 +20,7 @@ const pv = {
   consoleArt: async () => null,
   videoState: async () => null,
   videoSeek: async () => null,
-  gameRunning: async () => false, openDataDir: async () => false, onUpdate: () => {}, updateRestart: async () => false, setVolume: async () => 'none', notify: async () => true, quitNow: async () => window.close(), onBye: () => {}, biosAdd: async () => ({ got: [] }),
+  gameRunning: async () => false, openDataDir: async () => false, remoteSet: async () => ({}), remoteInfo: async () => ({}), remoteNewKey: async () => ({}), remoteState: () => {}, onRemote: () => {}, onUpdate: () => {}, updateRestart: async () => false, setVolume: async () => 'none', notify: async () => true, quitNow: async () => window.close(), onBye: () => {}, biosAdd: async () => ({ got: [] }),
   mediaKey: async () => false,
   onPlaytime: () => {},
   onVoiceStart: () => {},
@@ -653,20 +653,22 @@ function renderPage() {
 let gamesTab = 'games';
 const torClean = (n) => String(n || '').replace(/\.torrent$/i, '').replace(/[\[(][^\])]*[\])]/g, ' ').replace(/[._]+/g, ' ').replace(/\b(fitgirl|dodi|repack|elamigos|gog|codex|plaza|empress|rune|tenoke|multi\d*|v?\d+(\.\d+){1,3}|build \d+|nsz|nsp|xci|iso|pc|ps\d|switch)\b/gi, ' ').replace(/[-+]+\s*$/, '').replace(/\s+/g, ' ').trim();
 const torHuman = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? Math.round(b / 1048576) + ' MB' : '';
-async function addToTorLib(file, downloadingNow) {
+async function addToTorLib(file, downloadingNow, fromShare) {
   const r = await pv.torlibSave(file); if (!r) return downloadingNow ? null : toast('ما قدرت أقرأ ملف التورنت');
   data.torLib ||= [];
   const had = data.torLib.find((t) => t.name === r.name);
   if (had) { if (downloadingNow) { had.state = 'downloading'; had.pct = 0; save(); } else toast('موجود من قبل في التورنت'); return; }
   const t = { id: uid(), name: r.name, title: torClean(r.name) || r.name, file: r.file, size: r.size, image: '', state: downloadingNow ? 'downloading' : 'saved', pct: 0, added: Date.now() };
   data.torLib.unshift(t); save();
-  if (!downloadingNow) toast(`🧲 انحفظ "${t.title}": اضغط تنزيل متى ما بغيت`);
+  if (torShareDir && !fromShare) pv.torSharePut(r.file || file);
+  if (fromShare) toast(`👥 وصلك تورنت مشترك: ${t.title}`); else if (!downloadingNow) toast(`🧲 انحفظ "${t.title}": اضغط تنزيل متى ما بغيت`);
   if (currentPageId === 'games' && gamesTab === 'tor') renderPage();
   pv.findCover(t.title).then((a) => { if (a?.image) { t.image = a.image; save(); if (currentPageId === 'games' && gamesTab === 'tor') renderPage(); } });
 }
 function renderTorLib(seg) {
   const lib = data.torLib || [];
   view.innerHTML = seg + `<p class="hint tl-hint">احفظ هنا ملفات التورنت حق الألعاب بدون ما تحملها. لما تضغط ⬇ تنزيل يحملها ويفكها ويجهزها، وتنضاف للألعاب لحالها.</p>
+    <div class="tor-share"><span>👥 ${torShareDir ? `مشترك مع مجلد: <b dir="ltr">${esc(torShareDir.split(/[\\/]/).slice(-2).join('/'))}</b> — أي تورنت ينحط فيه يوصل للكل` : 'شارك التورنتات مع أخوك أو خويك: اختر مجلد مشترك بينكم (OneDrive / Google Drive)'}</span><button class="btn ghost sm" id="torShareBtn">${torShareDir ? 'غيّر' : '📁 اختر مجلد مشترك'}</button>${torShareDir ? '<button class="btn ghost sm" id="torShareOff">إيقاف</button>' : ''}</div>
     <div class="tiles portrait">${lib.map((t) => `
       <div class="tile tor-tile ${t.state}" data-tor="${t.id}" title="${esc(t.name)}">
         ${coverHtml({ name: t.title, image: t.image })}
@@ -679,6 +681,8 @@ function renderTorLib(seg) {
   wireImages(view);
   view.querySelectorAll('[data-gt]').forEach((b) => b.onclick = () => { gamesTab = b.dataset.gt; renderPage(); }); // the Games / Torrent switch works from here too
   $('#torAddFile').onclick = async () => { const f = await pv.pickFile('torrent'); if (f) addToTorLib(f); };
+  $('#torShareBtn')?.addEventListener('click', async () => { const dir = await pv.pickDir(); if (!dir) return; torShareDir = await pv.torShareSet(dir); for (const t of data.torLib || []) if (t.file) pv.torSharePut(t.file); toast('👥 صار مشترك: أي تورنت تحطه يوصل لهم، واللي يحطونه يوصلك'); renderPage(); });
+  $('#torShareOff')?.addEventListener('click', async () => { torShareDir = await pv.torShareSet(''); toast('وقّفت المشاركة'); renderPage(); });
   view.querySelectorAll('[data-tor]').forEach((el) => {
     const t = lib.find((x) => x.id === el.dataset.tor);
     el.querySelector('[data-dl]')?.addEventListener('click', async (e) => { e.stopPropagation(); const r = await pv.torAdd(t.file); if (r.ok) { t.state = 'downloading'; t.pct = 0; save(); renderPage(); toast(`⬇ بدأ تحميل ${t.title}`); } else toast('ما قدرت: ' + r.error); });
@@ -2124,11 +2128,13 @@ setTimeout(pollSpotify, 1500);
 function openSettings(tab = 'general') {
   $('#setAutostart').checked = !!data.settings.autostart;
   document.querySelectorAll('#settings .tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
-  for (const [t, id] of [['general', 'setGeneral'], ['controls', 'setControls'], ['moods', 'setMoods'], ['look', 'setLook'], ['keys', 'setKeys'], ['plugins', 'setPlugins'], ['advanced', 'setAdvanced']]) $('#' + id).hidden = tab !== t;
+  for (const [t, id] of [['general', 'setGeneral'], ['controls', 'setControls'], ['moods', 'setMoods'], ['look', 'setLook'], ['keys', 'setKeys'], ['plugins', 'setPlugins'], ['advanced', 'setAdvanced'], ['phone', 'setPhone']]) $('#' + id).hidden = tab !== t;
+  if (tab === 'phone') drawRemote();
   if (tab === 'keys') keysStatus();
   if (tab === 'plugins') drawPlugins();
   if (tab === 'advanced') { $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDingVol').value = Math.round((data.settings.dingVol ?? 1) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
   $('#setAkaiName').value = data.settings.akaiName || '';
+  $('#setLang').value = data.settings.lang || 'ar';
   if (tab === 'moods') window.renderMoodSettings?.($('#setMoods'));
   if (tab === 'controls') window.renderControlSettings?.($('#setControls'));
   $('#setVoiceModel').value = data.settings.voiceModel || 'base';
@@ -2603,3 +2609,33 @@ pv.onUpdate(() => {
   now.onclick = () => pv.updateRestart();
   later.onclick = () => { b.remove(); toast('يتطبق لحاله أول ما تفتح البرنامج مرة ثانية'); };
 });
+
+// ---------- Phone remote: settings + what the phone sees + what it asks for ----------
+async function drawRemote(r) {
+  r ||= await pv.remoteInfo();
+  $('#remoteOn').checked = !!r.on;
+  $('#remoteBox').innerHTML = r.on ? `<div class="share-body"><div class="qr">${r.qr || ''}</div><div><p class="hint">صوّره بكاميرا الجوال، أو افتح:</p><b dir="ltr" class="share-url">${esc(r.url || '')}</b><p class="hint">نصيحة: من الجوال اضغط "إضافة للشاشة الرئيسية" ويصير مثل تطبيق.</p><button class="btn ghost sm" id="remoteNew">🔄 رابط جديد (يقفل القديم)</button></div></div>` : '';
+  $('#remoteNew')?.addEventListener('click', async () => drawRemote(await pv.remoteNewKey()));
+}
+$('#remoteOn').onchange = async () => { const r = await pv.remoteSet($('#remoteOn').checked); drawRemote(r); pushRemote(); };
+function pushRemote() {
+  const games = allItems().filter((i) => isGameItem(i) && !i.owned && (!i.rom || true)).slice(0, 400).map((i) => {
+    const img = i.noArt ? '' : (i.image || '');
+    return { id: i.id, name: i.name, img: img && !isDrivePath(img) ? img : (img ? 'local' : ''), imgPath: img && isDrivePath(img) ? img : '' };
+  });
+  const torrents = (data.torLib || []).filter((t) => t.state && t.state !== 'saved').slice(0, 20).map((t) => ({ title: t.title, state: t.state, pct: t.pct }));
+  pv.remoteState({ games, torrents, name: data.user?.name || '' });
+}
+setInterval(pushRemote, 15000); setTimeout(pushRemote, 4000);
+pv.onRemote((c) => {
+  if (c.type === 'launch') { const f = findItem(c.id); if (f) { launchItem(f.item); toast(`📱 ${f.item.name} من الجوال`); } }
+  else if (c.type === 'toast') toast(c.msg);
+  else if (c.type === 'say') window.Akai?.say(c.text);
+});
+
+// ---------- Shared torrents (a folder you share with your people) ----------
+let torShareDir = '';
+pv.torShareGet().then((d) => { torShareDir = d || ''; }).catch(() => {});
+pv.onTorShare((f) => addToTorLib(f, false, true));
+
+$('#setLang').onchange = () => window.I18n?.set($('#setLang').value);

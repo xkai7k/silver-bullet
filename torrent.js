@@ -107,7 +107,8 @@ function setupTorrents(ctx) {
       if (list.some((x) => x.status === 'active')) tick.lastBusy = Date.now();
     } catch (e) { if (!tick.warned) { tick.warned = true; log('torrent poll', e.message); } }
   }
-  ipcMain.handle('tor:add', async (_e, what) => {
+  ipcMain.handle('tor:add', (_e, what) => addTorrent(what));
+  async function addTorrent(what) {
     try {
       await ensure();
       let gid;
@@ -119,7 +120,7 @@ function setupTorrents(ctx) {
       log('torrent added', gid);
       return { ok: true, gid };
     } catch (e) { log('torrent add failed', e.message); return { error: e.message }; }
-  });
+  }
   ipcMain.handle('tor:act', async (_e, gid, act) => {
     try { await ensure(); await rpc(act === 'pause' ? 'aria2.pause' : act === 'resume' ? 'aria2.unpause' : 'aria2.remove', [gid]); if (act === 'remove') await rpc('aria2.removeDownloadResult', [gid]).catch(() => {}); return true; }
     catch { try { await rpc('aria2.removeDownloadResult', [gid]); } catch {} return false; }
@@ -148,6 +149,6 @@ function setupTorrents(ctx) {
   app.on('will-quit', () => { try { rpc('aria2.saveSession').catch(() => {}); setTimeout(() => { try { proc?.kill(); } catch {} }, 300); } catch {} });
   // downloads from last time carry on by themselves
   if (fs.existsSync(path.join(TOOL, 'session.txt')) && fs.statSync(path.join(TOOL, 'session.txt')).size > 0) setTimeout(() => ensure().catch(() => {}), 8000);
-  return { dir: OUT, fastGet, repair };
+  return { dir: OUT, fastGet, repair, add: addTorrent };
 }
 module.exports = { setupTorrents };

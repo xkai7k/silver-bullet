@@ -306,6 +306,30 @@ ipcMain.handle('file:info', (_e, p) => {
   } catch { return { exists: false }; }
 });
 
+// ---------- Shared torrents: a folder you share with your people (OneDrive / Google Drive). A .torrent anyone puts
+// there shows up in everyone's torrent tab; the ones you save go there too ----------
+const shareCfgF = () => path.join(app.getPath('userData'), 'torshare.json');
+let torShare = (() => { try { return JSON.parse(fs.readFileSync(shareCfgF(), 'utf8')); } catch { return {}; } })();
+let torShareWatch = null;
+function torShareScan() {
+  if (!torShare.dir || !fs.existsSync(torShare.dir)) return;
+  torShare.seen ||= [];
+  let files = []; try { files = fs.readdirSync(torShare.dir).filter((f) => /\.torrent$/i.test(f)); } catch { return; }
+  for (const f of files) if (!torShare.seen.includes(f)) { torShare.seen.push(f); mainWin?.webContents.send('torshare:file', path.join(torShare.dir, f)); }
+  try { fs.writeFileSync(shareCfgF(), JSON.stringify(torShare)); } catch {}
+}
+function torShareStart() {
+  try { torShareWatch?.close(); } catch {} torShareWatch = null;
+  if (!torShare.dir || !fs.existsSync(torShare.dir)) return;
+  try { torShareWatch = fs.watch(torShare.dir, () => { clearTimeout(torShareStart._t); torShareStart._t = setTimeout(torShareScan, 2500); }); } catch (e) { log('shared torrents watch failed', e.message); }
+  setTimeout(torShareScan, 6000);
+}
+ipcMain.handle('torshare:set', (_e, dir) => { torShare = { dir: dir || '', seen: dir && dir === torShare.dir ? torShare.seen : [] }; try { fs.writeFileSync(shareCfgF(), JSON.stringify(torShare)); } catch {} torShareStart(); return torShare.dir; });
+ipcMain.handle('torshare:get', () => torShare.dir || '');
+ipcMain.handle('torshare:put', (_e, file) => { // one you saved → into the shared folder for the others
+  try { if (!torShare.dir || !fs.existsSync(file)) return false; const name = path.basename(file); const to = path.join(torShare.dir, name); (torShare.seen ||= []).includes(name) || torShare.seen.push(name); if (!fs.existsSync(to)) fs.copyFileSync(file, to); fs.writeFileSync(shareCfgF(), JSON.stringify(torShare)); return true; } catch (e) { log('shared torrent copy failed', e.message); return false; }
+});
+app.whenReady().then(() => setTimeout(torShareStart, 3000));
 ipcMain.handle('pick:dir', async () => {
   const r = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   return r.canceled ? null : r.filePaths[0];
@@ -1419,14 +1443,15 @@ ipcMain.handle('game:running', () => gamesRunning > 0);
 ipcMain.handle('file:trash', async (_e, files) => { let n = 0; for (const f of files || []) { try { await shell.trashItem(f); n++; } catch (e) { log('trash failed', f, e.message); } } return n; });
 ipcMain.handle('data:open', () => shell.openPath(app.getPath('userData')));
 // Spotify's own volume in the Windows mixer (or the whole PC when Spotify isn't making sound)
-ipcMain.handle('media:volume', (_e, level, target) => new Promise((resolve) => {
+ipcMain.handle('media:volume', (_e, level, target) => setAppVolume(level, target));
+function setAppVolume(level, target) { return new Promise((resolve) => {
   if (process.platform !== 'win32') return resolve('none');
   execFile('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'ps', 'volume.ps1'), String(Math.round(Number(level) || 0)), String(target || 'spotify')], { windowsHide: true, timeout: 15000 }, (err, out, errOut) => {
     const last = String(out || '').trim().split(/\r?\n/).pop() || '';
     if (err || /^err:/.test(last)) log('volume failed', (last || String(errOut || err?.message || '')).slice(0, 700));
     resolve(err || /^err:/.test(last) ? 'none' : last);
   });
-}));
+}); }
 ipcMain.handle('notify', (_e, body) => { try { const { Notification } = require('electron'); if (Notification.isSupported()) new Notification({ title: 'أكاي', body: String(body || ''), silent: true }).show(); } catch {} return true; });
 // Closing: the app says goodbye first, then really quits (nothing stays running in the background)
 let byeSaid = false;
@@ -1479,12 +1504,13 @@ ipcMain.handle('video:seek', (_e, wcId, t) => eachFrame(wcId, (f) => f.executeJa
 
 // ---------- Music (media keys control Spotify or whatever player is active) ----------
 const MEDIA_VK = { playpause: 0xB3, next: 0xB0, prev: 0xB1, volup: 0xAF, voldown: 0xAE };
-ipcMain.handle('media:key', (_e, key) => new Promise((resolve) => {
+ipcMain.handle('media:key', (_e, key) => mediaKeyPress(key));
+function mediaKeyPress(key) { return new Promise((resolve) => {
   const vk = MEDIA_VK[key];
   if (!vk || process.platform !== 'win32') return resolve(false);
   const ps = `Add-Type -Name K -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern void keybd_event(byte b, byte s, uint f, System.UIntPtr e);'; [W.K]::keybd_event(${vk},0,1,[UIntPtr]::Zero); [W.K]::keybd_event(${vk},0,3,[UIntPtr]::Zero)`;
   execFile('powershell', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps], { windowsHide: true }, (err) => resolve(!err));
-}));
+}); }
 
 ipcMain.handle('pick:file', async (_e, kind) => {
   const filters = kind === 'image' ? [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }]
@@ -1749,7 +1775,7 @@ app.on('web-contents-created', (_e, contents) => {
 // Only one Preview window: opening it again just brings the existing one to the front.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
-const MAIN_FILES = ['main.js', 'preload.js', 'roms.js', 'boot.js'];
+const MAIN_FILES = ['main.js', 'preload.js', 'roms.js', 'boot.js', 'remote.js', 'torrent.js'];
 const codeStamp = () => MAIN_FILES.map((f) => { try { return fs.statSync(path.join(SRC_DIR, f)).size + ':' + Math.round(fs.statSync(path.join(SRC_DIR, f)).mtimeMs / 1000); } catch { return 0; } }).join();
 function copyPageFiles() { // html / css / js / ps from the project folder into the running app
   if (path.resolve(SRC_DIR) === path.resolve(__dirname)) return;
@@ -1821,6 +1847,7 @@ app.whenReady().then(() => {
   setTimeout(() => backupSaves().catch((e) => log('saves', e.message)), 45000);
   try {
     tor = require('./torrent').setupTorrents({ ipcMain, app, net, log, download, run, EMU_ROOT, getWin: () => mainWin, importGame: (f, mv) => roms?.importFile(f, mv) });
+    try { require('./remote')({ ipcMain, app, log, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w), lanAddress, qrSvgOf }); } catch (e) { log('phone remote failed', e.message); }
   } catch (e) { log('torrent setup failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
