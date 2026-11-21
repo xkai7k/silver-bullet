@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('api', {
   fullscreen: (on) => ipcRenderer.invoke('win:fullscreen', on),
   autostart: (on) => ipcRenderer.invoke('app:autostart', on),
   btBattery: () => ipcRenderer.invoke('bt:battery'),
+  sysScan: (fresh) => ipcRenderer.invoke('sys:scan', !!fresh),
   ds4Path: () => ipcRenderer.invoke('tools:ds4'),
   scanShots: (games) => ipcRenderer.invoke('shots:scan', games),
   shotsFolder: () => ipcRenderer.invoke('shots:folder'),

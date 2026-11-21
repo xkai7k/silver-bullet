@@ -7,6 +7,7 @@
   let detItem = null;
 
   window.openDetail = function openDetail(item) {
+    if (detItem === item && !det.hidden) return; // clicked again while it's open: don't rebuild the whole screen
     detItem = item;
     const f = findItem(item.id);
     const a = avgRating(item), m = playMinutes(item);

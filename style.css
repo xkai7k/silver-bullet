@@ -1945,3 +1945,14 @@ dialog.mods-pick { width: min(560px, 92vw); }
 .mp-g { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 0; border-radius: 12px; background: var(--card); color: inherit; font: inherit; text-align: start; cursor: pointer; }
 .mp-g:hover { background: var(--card-hover); } .mp-g img, .mp-g span { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; display: grid; place-items: center; }
 .mp-g b { flex: 1; } .mp-g small { opacity: .6; }
+
+/* Settings → Advanced: this PC */
+.adv-dev { margin: 6px 0 10px; }
+.dev-grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); font-size: 13px; }
+.dev-grid span { opacity: .65; }
+.dev-grid b { font-weight: 600; overflow-wrap: anywhere; }
+.dev-w { display: inline-block; font-style: normal; margin: 0 0 4px 8px; padding: 2px 8px; border-radius: 999px; background: rgba(127,127,127,.15); }
+
+/* Akai in the Najdi theme: white thobe under the shmagh */
+.dress-najdi .ak-scarf, .dress-najdi .ak-scarf-tail, .dress-najdi .ak-lapel { display: none; }
+.dress-najdi .ak-coat { fill: #f3efe6; }

@@ -55,10 +55,11 @@
   async function record() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     const ctx = new AudioContext({ sampleRate: 16000 });
-    const src = ctx.createMediaStreamSource(stream);
+    const src0 = ctx.createMediaStreamSource(stream);
+    const src = ctx.createGain(); src.gain.value = 1.6; src0.connect(src); // same lift as the wake listener: quiet mics are heard
     const proc = ctx.createScriptProcessor(2048, 1, 1);
     const chunks = [];
-    let speaking = false, silent = 0, total = 0, done = false, floor = 0.01;
+    let speaking = false, silent = 0, total = 0, done = false, floor = 0.008;
     try { if (ctx.state === 'suspended') await ctx.resume(); } catch {}
     return new Promise((resolve) => {
       const hard = setTimeout(() => { pv.log('voice: mic gave no sound, stopping'); finish(); }, 9000); // never hang if the mic is silent/blocked
@@ -80,9 +81,9 @@
         const rms = Math.sqrt(sum / d.length);
         const dt = d.length / ctx.sampleRate;
         total += dt;
-        if (total < 0.3) floor = Math.max(floor, rms * 1.5); // learn the room noise
+        if (total < 0.3) floor = Math.min(0.02, Math.max(floor, rms * 1.3)); // learn the room noise (capped: if you start talking right away, your voice isn't taken for noise)
         uiLevel.style.width = Math.min(100, rms * 900) + '%';
-        if (rms > Math.max(0.013, floor)) { speaking = true; silent = 0; } else if (speaking) silent += dt;
+        if (rms > Math.max(0.009, floor)) { speaking = true; silent = 0; } else if (speaking) silent += dt;
         if ((speaking && silent > 0.9) || total > 7 || (!speaking && total > 5)) finish();
       };
       src.connect(proc); proc.connect(ctx.destination);
@@ -148,7 +149,7 @@
   // Cheap when quiet: only short bursts of speech get transcribed, everything stays on this PC.
   let wake = null;
   // Whisper writes "Akai" many ways (اكاي، عكاي، أكايه، كاي، a kai…): accept them all, and the name split in two
-  const AKAI = ['اكاي', 'عكاي', 'اكايي', 'اكايه', 'هكاي', 'اكاى', 'اكي', 'اكاي ي', 'ياكاي', 'كاي', 'akai', 'akay', 'acai', 'aki'];
+  const AKAI = ['اكاي', 'عكاي', 'اكايي', 'اكايه', 'هكاي', 'اكاى', 'اكي', 'اكاي ي', 'ياكاي', 'كاي', 'اكايا', 'اكايه', 'يكاي', 'عكايه', 'اكاه', 'كاى', 'الكاي', 'اكيه', 'akai', 'akay', 'acai', 'aki', 'akkai', 'akaay'];
   function wakeMatch(text) {
     const words = normAr(String(text).replace(/a\s+kai/ig, 'akai')).split(' ').filter(Boolean);
     // a name you chose for him (Settings): matched by sound, at the start of the sentence
@@ -236,12 +237,12 @@
         let sum = 0; for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
         const rms = Math.sqrt(sum / d.length), dt = d.length / 16000;
         if (!speaking) floor = floor * 0.995 + Math.min(rms, 0.04) * 0.005; // follows the room noise slowly
-        const loud = rms > Math.max(0.011, floor * 1.8);
+        const loud = rms > Math.max(0.009, floor * 1.6); // a bit more sensitive: quieter voices and mics farther away
         if (loud) {
           if (!speaking) { speaking = true; seg = pre.slice(); segLen = 0; }
           silent = 0;
         } else if (speaking) silent += dt;
-        if (speaking) { seg.push(d); segLen += dt; if (silent > 0.5 || segLen > 6) flush(); }
+        if (speaking) { seg.push(d); segLen += dt; if (silent > 0.65 || segLen > 6) flush(); } // a short breath after his name doesn't cut you off
         pre.push(d); if (pre.length > 6) pre.shift(); // keep the start of the word (~0.75 s)
       };
       src.connect(proc); proc.connect(ctx.destination);

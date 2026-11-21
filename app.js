@@ -845,12 +845,16 @@ function renderDrawer() {
     ['pad', '🎮', 'اليد والأجهزة'], ['emu', '🕹️', 'المحاكيات'], ['voice', '🎙', 'كلّم أكاي'], ['help', '؟', 'التعليمات'],
     ['downloads', '⬇', 'التحميلات'], ['logs', '📜', 'السجلات'], ['stores', '🛒', 'المتاجر'], ['features', '✨', 'المزايا'],
   ];
+  // only what isn't already on the screen: the top bar (rating, help), the dock (Akai, themes) and the home page cards (games, emulators…)
+  const shown = (id) => { const el = document.getElementById(id); return !!el && !el.hidden && el.offsetParent !== null; };
+  const onHome = new Set(data.pages.map((p) => p.type || p.id));
+  const dupe = { home: !currentPageId, ratings: shown('rateBtn'), help: shown('helpBtn'), theme: shown('themeBtn'), voice: shown('micBtn'), emu: onHome.has('emu') || !!page('emu') };
+  quick.splice(0, quick.length, ...quick.filter(([k]) => !dupe[k]));
   nav.innerHTML = `
     <div class="dr-quick">${quick.map(([k, i, t]) => `<button data-nav="${k}" class="dq ${k === 'home' && !currentPageId ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</div>
     <div class="nav-sep">مجلداتك</div>
     <button data-nav="mods"><span>🧩</span>المودات والتعريبات<small>اسحبها هنا</small></button>
     <button data-nav="keys"><span>🔑</span>المفاتيح والبايوس<small>السويتش وغيره</small></button>
-    <button data-nav="gamesdir"><span>🎮</span>مجلد الألعاب<small>المحاكيات</small></button>
     <div class="nav-sep">أكثر</div>
     <button data-nav="plugins"><span>🔌</span>الإضافات<small>شغّل أو طفّي</small></button>
     <button data-nav="newpage"><span>＋</span>صفحة جديدة</button>`;
@@ -1036,8 +1040,9 @@ async function autoCoverFor(item, announce) {
 // ---------- Import (Steam / Epic) ----------
 async function runImport(kind, target = null, quiet = false) {
   if (!quiet) toast('جاري البحث عن الألعاب…');
-  const res = kind === 'steam' ? await pv.importSteam() : kind === 'epic' ? await pv.importEpic() : await pv.importMore(kind);
+  const res = (await (kind === 'steam' ? pv.importSteam() : kind === 'epic' ? pv.importEpic() : pv.importMore(kind)).catch((e) => ({ error: 'ما قدرت أدوّر: ' + (e?.message || e) }))) || {};
   if (res.error) { if (!quiet) toast(res.error); return 0; }
+  res.games = Array.isArray(res.games) ? res.games : [];
   const p = target || page();
   let added = 0, updated = 0;
   const needCovers = [];
@@ -1260,14 +1265,15 @@ pv.onEmuProgress((m) => {
 });
 async function installEmulators(ids) {
   toast('🕹️ أحمّل المحاكيات المعروفة… تقدر تكمل شغلك عادي');
-  await addEmulatorTiles((await pv.emuCatalog()).filter((x) => x.exe)); // ones already on the PC show up right away
+  await addEmulatorTiles(((await pv.emuCatalog().catch(() => [])) || []).filter((x) => x.exe)); // ones already on the PC show up right away
   if (currentPageId === emuPage()?.id) render();
-  const res = await pv.emuInstall(ids);
+  let res = await pv.emuInstall(ids).catch((e) => { pv.log('emu install failed ' + (e?.message || e)); return []; });
+  if (!Array.isArray(res)) res = [];
   await addEmulatorTiles(res.filter((r) => r.ok));
   const ok = res.filter((r) => r.ok).length, bad = res.filter((r) => !r.ok);
   pv.log(`emulators: ${ok} ready, failed: ${bad.map((b) => b.name + ' (' + b.error + ')').join(', ') || 'none'}`);
   if (!ids) { data.emusV1 = true; save(); }
-  pv.emuPrepare().then((c) => { pv.log('emulators prepared, cores: ' + c.join(',')); data.emuPrepV1 = true; save(); });
+  pv.emuPrepare().then((c) => { pv.log('emulators prepared, cores: ' + [].concat(c || []).join(',')); data.emuPrepV1 = true; save(); });
   render();
   toast(bad.length ? `✓ ${ok} محاكي جاهز، وما نزل: ${bad.map((b) => b.name).join('، ')}` : `✓ كل المحاكيات جاهزة (${ok})`);
 }
@@ -1423,7 +1429,15 @@ $('#emuTorrent').onclick = () => { $('#emuDialog').close(); openTorrentAdd(); };
 $('#emuBios').onclick = () => pv.romsFolder('bios');
 
 // ---------- Launching ----------
+const launchedAt = new Map(); let launchesInFlight = 0;
 async function launchItem(item) {
+  // pressed two or three times fast (or a double-click right after a click): open it once, not three times
+  if (Date.now() - (launchedAt.get(item.id) || 0) < 2500 || launchesInFlight > 1) return;
+  launchedAt.set(item.id, Date.now());
+  launchesInFlight++;
+  try { return await launchItemNow(item); } finally { launchesInFlight--; }
+}
+async function launchItemNow(item) {
   item.lastOpened = Date.now();
   save();
   window.Music?.pauseForApp();
@@ -2178,7 +2192,7 @@ function openSettings(tab = 'general') {
   if (tab === 'phone') drawRemote();
   if (tab === 'keys') keysStatus();
   if (tab === 'plugins') drawPlugins();
-  if (tab === 'advanced') { $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDingVol').value = Math.round((data.settings.dingVol ?? 1) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
+  if (tab === 'advanced') { drawDevice(); $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDingVol').value = Math.round((data.settings.dingVol ?? 1) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
   $('#setAkaiName').value = data.settings.akaiName || '';
   $('#setLang').value = data.settings.lang || 'ar';
   if (tab === 'moods') window.renderMoodSettings?.($('#setMoods'));
@@ -2257,6 +2271,55 @@ function applyPlugins() {
   document.body.classList.toggle('no-blur', !!data.settings.noBlur);
   if (!plugOn('tunes')) window.Music?.pause?.();
 }
+// ---------- This PC: look at it once, then set the app up to fit it (not every PC is like the one it was made on) ----------
+const KIND_ICON = { audio: '🎧', pad: '🎮', mouse: '🖱', keyboard: '⌨', receiver: '📡', phone: '📱', other: '📶' };
+async function deviceScan(fresh) {
+  const d = await pv.sysScan?.(fresh).catch(() => null);
+  if (!d) return null;
+  data.device = { ...d, at: undefined };
+  window.Pad?.setWireless?.(d.wireless || []);
+  let gpu = (d.gpus || []).map((g) => g.name).join(' + ');
+  const strongGpu = /nvidia|geforce|rtx|gtx|radeon rx|arc a/i.test(gpu);
+  let mics = 0; try { mics = (await navigator.mediaDevices.enumerateDevices()).filter((x) => x.kind === 'audioinput').length; } catch {}
+  if (!data.settings.deviceTuned) {
+    // first look at this PC: pick the settings that suit it, and say what was found
+    const did = [];
+    const weak = (d.ramGB && d.ramGB <= 8) || (d.cores && d.cores <= 4) || (!strongGpu && !navigator.gpu);
+    if (weak) { data.settings.lite = true; data.settings.noBlur = true; did.push('وضع خفيف'); }
+    if (d.laptop && !weak) { data.settings.noBlur = true; did.push('أخف على البطارية'); }
+    if (!d.bluetooth && !(d.wireless || []).length) { (data.settings.plugins ||= {}).battery = false; did.push('بدون تنبيه الشحن (ما فيه أجهزة لاسلكية)'); }
+    if (!mics) { data.settings.wakeOn = false; did.push('بدون نداء أكاي (ما فيه مايك)'); }
+    if (!navigator.gpu || !strongGpu) { data.settings.voiceModel = 'base'; }
+    if (weak) (data.settings.plugins ||= {}).scenes = false;
+    data.settings.deviceTuned = Date.now();
+    save(); applyPlugins();
+    const wl = (d.wireless || []).map((w) => KIND_ICON[w.kind] + ' ' + w.name);
+    toast(`🖥 عرفت جهازك: ${d.ramGB || '?'}GB رام${gpu ? ' · ' + gpu : ''}${wl.length ? ' · ' + wl.length + ' جهاز لاسلكي' : ''}${did.length ? ' — ضبطته: ' + did.join('، ') : ''}`, 9000);
+    pv.log(`device tuned: ${did.join(', ') || 'nothing to change'}; wireless: ${wl.join(', ') || 'none'}; mics ${mics}`);
+  }
+  drawDevice();
+  return d;
+}
+function drawDevice() {
+  const box = $('#advDevice'); if (!box) return;
+  const d = data.device;
+  if (!d) { box.innerHTML = `<div class="set-row"><span>🖥 جهازي</span><button type="button" class="btn ghost sm" id="advScan">🔍 افحص جهازي</button></div>`; }
+  else box.innerHTML = `<div class="set-row"><span>🖥 جهازي</span><button type="button" class="btn ghost sm" id="advScan">🔍 افحص من جديد</button></div>
+    <div class="dev-grid">
+      <span>المعالج</span><b dir="auto">${esc(d.cpu || '—')}${d.cores ? ` (${d.cores})` : ''}</b>
+      <span>الرام</span><b>${d.ramGB || '—'} GB</b>
+      <span>كرت الشاشة</span><b dir="auto">${esc((d.gpus || []).map((g) => g.name).join(' + ') || '—')}</b>
+      <span>النوع</span><b>${d.laptop ? 'لابتوب' : 'كمبيوتر مكتبي'} · ${d.wifi ? 'واي فاي ✓' : 'بدون واي فاي'} · ${d.bluetooth ? 'بلوتوث ✓' : 'بدون بلوتوث'}</b>
+      <span>اللاسلكي</span><b dir="auto">${(d.wireless || []).map((w) => `<i class="dev-w">${KIND_ICON[w.kind] || '📶'} ${esc(w.name)}</i>`).join('') || 'ما لقيت شي متصل'}</b>
+    </div>`;
+  box.querySelector('#advScan').onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = '⏳ أفحص…';
+    const r = await deviceScan(true);
+    if (!r) toast('ما قدرت أفحص الجهاز'); else toast('✓ فحصت جهازك');
+    drawDevice();
+  };
+}
+
 function drawPlugins() {
   $('#pluginList').innerHTML = PLUGINS.map(([k, i, t, d]) => `<label class="plug"><span class="pi">${i}</span><span class="pt"><b>${t}</b><small>${d}</small></span><input type="checkbox" data-plug="${k}" ${(k === 'wake' ? !!data.settings.wakeOn : plugOn(k)) ? 'checked' : ''}></label>`).join('');
   $('#pluginList').querySelectorAll('[data-plug]').forEach((c) => c.onchange = () => {
@@ -2396,12 +2459,12 @@ $('#backBtn').onclick = () => { if (!$('#detail')?.hidden) return window.closeDe
 // Keyboard and controller navigation live in nav.js
 
 let toastTimer;
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const t = $('#toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // Show unexpected errors on screen so they can be reported.
@@ -2454,6 +2517,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
   save();
   render();
   pv.log(`ui ready: ${data.pages.length} pages, ${allItems().length} items, theme ${data.theme}`);
+  if (inElectron) setTimeout(() => deviceScan(false), 5000);
   try {
     const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput').length;
     pv.log(`env: webgpu ${!!navigator.gpu}, mics ${mics}`);

@@ -12,6 +12,7 @@
         <linearGradient id="akSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6d3b3"/><stop offset="1" stop-color="#e4b48e"/></linearGradient>
         <linearGradient id="akHair" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a2a22"/><stop offset="1" stop-color="#16100c"/></linearGradient>
         <linearGradient id="akCoat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4150"/><stop offset="1" stop-color="#1c2028"/></linearGradient>
+        <pattern id="akShm" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="9" height="9" fill="#f6f2ea"/><rect width="4.5" height="4.5" fill="#c7202b"/><rect x="4.5" y="4.5" width="4.5" height="4.5" fill="#c7202b" opacity=".55"/></pattern>
         <radialGradient id="akIris" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#e2a85a"/><stop offset=".6" stop-color="#9a5f24"/><stop offset="1" stop-color="#4a2a10"/></radialGradient>
       </defs>
       <g class="ak-acc ak-acc-back"></g>
@@ -68,8 +69,13 @@
     jazz: phones('#222', '#c9a227'), neon: phones('#ff2bd6', '#00e5ff'),
     farm: '<ellipse cx="80" cy="42" rx="70" ry="12" fill="#e6c36a"/><path d="M50 42 Q52 10 80 10 Q108 10 110 42 Z" fill="#d9b04f"/><rect x="50" y="32" width="60" height="7" fill="#b0462f"/>',
     souls: '<path d="M46 150 Q80 168 114 150 L120 168 Q80 186 40 168 Z" fill="#77716a" stroke="#34302c" stroke-width="2"/><path d="M52 160 Q80 174 108 160" stroke="#a9a29a" stroke-width="1.6" fill="none"/>',
-    najdi: '<path d="M16 156 Q4 50 80 22 Q156 50 144 156 L130 150 Q136 70 80 44 Q24 70 30 150 Z" fill="#fff"/><path d="M16 156 Q4 50 80 22 Q156 50 144 156" fill="none" stroke="#c0392b" stroke-width="4" stroke-dasharray="7 7"/>',
-    najdiFront: '<ellipse cx="80" cy="34" rx="44" ry="9" fill="none" stroke="#111" stroke-width="7"/>',
+    // a real Najdi shmagh: red-and-white weave over the head and down the shoulders, face open, black double igal on top
+    najdi: '<path d="M10 186 Q2 64 80 24 Q158 64 150 186 Z" fill="url(#akShm)"/><path d="M10 186 Q2 64 80 24 Q158 64 150 186" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="2"/>',
+    najdiFront: '<path fill-rule="evenodd" fill="url(#akShm)" d="M24 176 Q10 74 36 44 Q56 20 80 20 Q104 20 124 44 Q150 74 136 176 L118 176 L122 100 Q124 70 108 60 Q94 52 80 52 Q66 52 52 60 Q36 70 38 100 L42 176 Z"/>'
+      + '<path d="M38 100 Q36 70 52 60 Q66 52 80 52 Q94 52 108 58 Q124 70 122 100" fill="none" stroke="#f7f3ea" stroke-width="5" stroke-linecap="round"/>'
+      + '<path d="M30 120 Q26 80 38 60 M130 120 Q134 80 122 60" stroke="rgba(0,0,0,.14)" stroke-width="3" fill="none"/>'
+      + '<ellipse cx="80" cy="39" rx="41" ry="9" fill="none" stroke="#141414" stroke-width="5.5"/><ellipse cx="80" cy="47" rx="43" ry="9" fill="none" stroke="#0a0a0a" stroke-width="5.5"/>'
+      + '<path d="M44 43 Q80 57 116 43" stroke="rgba(255,255,255,.18)" stroke-width="1.5" fill="none"/>',
     pirate: '<path d="M32 58 Q34 22 80 20 Q126 22 128 58 Q80 44 32 58 Z" fill="#b3261e"/><circle cx="62" cy="38" r="3" fill="#fff"/><circle cx="96" cy="34" r="3" fill="#fff"/><path d="M124 50 L146 62 L132 68 Z" fill="#b3261e"/>',
     cyber: '<rect x="44" y="76" width="72" height="14" rx="7" fill="rgba(0,240,255,.35)" stroke="#fcee0a" stroke-width="2"/>',
     arcade: '<path d="M44 38 L52 18 L64 30 L80 12 L96 30 L108 18 L116 38 Z" fill="#ffd400"/>',
@@ -90,6 +96,7 @@
       root.querySelector('.ak-acc-back').innerHTML = back ? ACC[t] : '';
     }
     el.dataset.theme = t;
+    for (const root of [el, mini]) root?.classList.toggle('dress-najdi', back); // thobe instead of the coat and scarf
   }
   // ---------- his seat: bottom-left, where the mic button was. Click him to talk ----------
   const seat = document.getElementById('micBtn');

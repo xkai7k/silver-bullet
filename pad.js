@@ -22,14 +22,23 @@
   const chips = document.createElement('div');
   chips.id = 'battery';
   document.querySelector('.topbar .spacer')?.after(chips);
-  let btList = [], padBattery = null;
+  let btList = [], padBattery = null, wireless = [];
   const iconFor = (n) => /head|bud|air|pods|sound|audio|سماع|wh-|wf-|jbl|beats/i.test(n) ? '🎧'
     : /controller|gamepad|xbox|dualsense|dualshock|wireless controller|ds4/i.test(n) ? '🎮'
     : /mouse|ماوس|mx /i.test(n) ? '🖱' : /keyboard|كيبورد/i.test(n) ? '⌨' : '🔋';
   function drawChips() {
     const all = [...btList.map((d) => ({ name: d.name, pct: d.battery })), ...(padBattery ? [padBattery] : [])];
+    // wireless things that don't tell their battery still show up (just the icon; hover for the name)
+    const flat = (x) => String(x).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const pads = [...(navigator.getGamepads?.() || [])].filter(Boolean).map((g) => ({ name: g.id.replace(/\s*\(.*$/, ''), kind: 'pad' }));
+    for (const w of [...wireless, ...pads]) {
+      if (w.kind === 'receiver' || w.kind === 'phone' || w.wired) continue;
+      if (all.some((a) => flat(a.name).includes(flat(w.name).slice(0, 8)) || flat(w.name).includes(flat(a.name).slice(0, 8)) || (w.kind === 'pad' && /controller|xbox|dualsense|wireless controller/i.test(a.name)))) continue;
+      all.push({ name: w.name, pct: null });
+    }
+    if (all.length > 6) all.length = 6;
     chips.innerHTML = all.map((d) => `<span class="bchip ${d.pct <= 20 ? 'low' : ''}" title="${esc(d.name)}${d.charging ? ' (يشحن)' : ''}">
-      ${iconFor(d.name)} ${d.pct}%${d.charging ? '⚡' : ''}</span>`).join('');
+      ${iconFor(d.name)}${d.pct == null ? '' : ` ${d.pct}%`}${d.charging ? '⚡' : ''}</span>`).join('');
   }
   // ---------- low battery: one alert at 30% (again at 15%), bottom-left, even while you're in a game ----------
   // remembered between launches, so opening the app again doesn't repeat the same alert
@@ -57,7 +66,7 @@
   async function refreshBattery() {
     if (!inElectron) return;
     if (!refreshBattery.asked) { refreshBattery.asked = true; pv.log('battery: asking'); }
-    try { btList = await pv.btBattery(); } catch (e) { btList = []; pv.log('battery error ' + e.message); }
+    try { btList = await pv.btBattery(); if (!Array.isArray(btList)) btList = []; } catch (e) { btList = []; pv.log('battery error ' + e.message); }
     drawChips();
     lowBatteryCheck([...btList.map((d) => ({ name: d.name, pct: d.battery })), ...(padBattery ? [padBattery] : [])]);
     if (!refreshBattery.logged) { refreshBattery.logged = true; pv.log(`battery: ${JSON.stringify(btList)}`); }
@@ -273,11 +282,14 @@
       data.pad ||= { autoColor: true, color: '#5078ff' };
       refreshBattery();
       setInterval(refreshBattery, 90000);
+      window.addEventListener('gamepadconnected', () => drawChips());
+      window.addEventListener('gamepaddisconnected', () => drawChips());
       navigator.hid?.getDevices().then((ds) => { const d = ds.find((x) => x.vendorId === 0x054c); if (d) attach(d); }).catch(() => {});
       navigator.hid?.addEventListener('connect', (e) => { if (e.device.vendorId === 0x054c) attach(e.device); });
       navigator.hid?.addEventListener('disconnect', (e) => { if (e.device === hid) { hid = null; padBattery = null; drawChips(); } });
     },
     syncLight,
+    setWireless(list) { wireless = list || []; drawChips(); },
     PAD_NAMES, ACTIONS,
   };
 })();

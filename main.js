@@ -945,6 +945,24 @@ ipcMain.handle('tools:ds4', () => {
   return fs.existsSync(exe) ? exe : null;
 });
 
+// ---------- What this PC is (first run): processor, memory, graphics, Wi-Fi/Bluetooth and its wireless devices ----------
+let sysPending = null;
+ipcMain.handle('sys:scan', (_e, fresh) => {
+  const file = path.join(app.getPath('userData'), 'device.json');
+  if (!fresh) { try { const c = JSON.parse(fs.readFileSync(file, 'utf8')); if (Date.now() - c.at < 6 * 3600e3) return c; } catch {} }
+  if (sysPending) return sysPending;
+  const t0 = Date.now();
+  sysPending = new Promise((res) => {
+    execFile('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'ps', 'device.ps1')], { windowsHide: true, timeout: 40000, killSignal: 'SIGKILL', maxBuffer: 4e6 }, (err, out) => {
+      let r = null; try { r = JSON.parse(String(out || '').trim().split(/\r?\n/).pop()); } catch {}
+      if (r) { r.at = Date.now(); try { fs.writeFileSync(file, JSON.stringify(r, null, 1)); } catch {} }
+      log(`device scan ${Date.now() - t0}ms`, err ? 'error ' + err.message : '', JSON.stringify(r || {}).slice(0, 700));
+      res(r);
+    });
+  }).finally(() => { sysPending = null; });
+  return sysPending;
+});
+
 // ---------- Bluetooth battery levels (headsets, controllers, mice that report it to Windows) ----------
 let batteryPending = null;
 ipcMain.handle('bt:battery', () => {
@@ -1462,7 +1480,7 @@ async function checkUpdate(manual) {
     const sha = (await (await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/commits/main`, { headers: { Accept: 'application/vnd.github.sha', 'User-Agent': 'SilverBullet' } })).text()).trim();
     if (!/^[0-9a-f]{40}$/.test(sha)) return { ok: false, reason: 'no answer' };
     let cur = {}; try { cur = JSON.parse(fs.readFileSync(updFile(), 'utf8')); } catch {}
-    if (!cur.sha) { fs.writeFileSync(updFile(), JSON.stringify({ sha, at: Date.now() })); return { ok: true, latest: true }; } // first start: this is the newest
+    // first start: a downloaded copy (the ready zip especially) can be older than GitHub, so take the newest once
     if (cur.sha === sha) return { ok: true, latest: true };
     const tmp = path.join(app.getPath('temp'), 'sb-update'); fs.rmSync(tmp, { recursive: true, force: true }); fs.mkdirSync(tmp, { recursive: true });
     const zip = path.join(tmp, 'u.zip');
