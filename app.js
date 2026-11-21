@@ -156,7 +156,7 @@ function wireImages(root) {
       img.remove();
       const it = id && findItem(id)?.item;
       const m = it && /^steam:\/\/(?:rungameid|install)\/(\d+)/.exec(it.target || '');
-      if (it && !it.artTried) pv.log(`art: ${it.name} images failed (${it.target})`);
+      if (it && !it.artTried && !it.rom) pv.log(`art: ${it.name} has no Steam picture, looking elsewhere (${it.target})`);
       if (!it || it.rom) return;
       const use = (a) => { if (!a?.image || a.image === it.image) return false; it.image = a.image; if (a.hero) it.hero = a.hero; save(); if (currentPageId) renderPage(); else renderHome(); return true; };
       if (m && !it.artTried) {
@@ -891,7 +891,7 @@ const LOG_FIXES = [
   [/EACCES|EPERM|denied|access is denied/i, 'ويندوز منع الوصول للملف: سكّر أي برنامج فاتحه، أو جرّب تشغّل البرنامج كمسؤول.'],
   [/ENOENT|not found|no such file|ما لقيت/i, 'الملف انتقل أو انحذف: تأكد إنه موجود، أو اسحبه للبرنامج مرة ثانية.'],
   [/timeout|timed out|ETIMEDOUT|ECONNRESET|ENOTFOUND|network|fetch failed/i, 'مشكلة نت: تأكد من الاتصال (أو طفّ الـ VPN) وجرّب بعد شوي.'],
-  [/torrent.*(dead|stalled|no peers)|dead/i, 'التورنت ما له مصادر (ميت): جرّب ملف تورنت ثاني لنفس اللعبة.'],
+  [/torrent.*\b(dead|stalled|no peers)\b/i, 'التورنت ما له مصادر (ميت): جرّب ملف تورنت ثاني لنفس اللعبة.'],
   [/corrupt|checksum|hash|invalid/i, 'الملف خربان أو ناقص: احذفه ونزّله مرة ثانية (التورنت يصلحه لحاله لو كان من عندنا).'],
   [/crash|exited|code -?\d{3,}/i, 'المحاكي طاح: جرّب محاكي ثاني (كليك يمين على اللعبة)، أو حدّث المحاكي من صفحة المحاكيات.'],
   [/volume failed/i, 'ما قدرت أغيّر الصوت: تأكد إن سبوتيفاي شغّال ويطلع منه صوت.'],
@@ -901,7 +901,8 @@ const logFix = (l) => (LOG_FIXES.find(([re]) => re.test(l)) || [])[1] || 'جرّ
 async function openLogs(tab = 'dl') {
   const r = await pv.logsGet();
   const when = (t) => new Date(t).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-  const isErr = (l) => /fail|error|exception|crash|ما قدرت|corrupt|invalid|refused|denied|not found/i.test(l);
+  // whole words only ("Terrors" or "Deadly Sins" in a game name aren't errors), and normal notes (pictures, a site that moved) aren't either
+  const isErr = (l) => !/\b(ui: )?(console )?art: |ERR_ABORTED|ui froze|transformers@|gpu hiccup/i.test(l) && /\b(fail(ed|ure)?|errors?|exception|crash(ed)?|corrupt|invalid|refused|denied|not found)\b|ما قدرت/i.test(l) || (!/ERR_ABORTED/.test(l) && /\b[A-Z][a-z]*Error\b|rejection:|Uncaught/.test(l));
   let onlyErr = false;
   const draw = () => {
     const ev = r.events.filter((l) => !onlyErr || isErr(l));
@@ -2405,7 +2406,7 @@ function toast(msg) {
 
 // Show unexpected errors on screen so they can be reported.
 window.addEventListener('error', (e) => { toast(`خطأ: ${e.message}`); pv.log(`error: ${e.message} @${e.filename}:${e.lineno}`); });
-window.addEventListener('unhandledrejection', (e) => { toast(`خطأ: ${e.reason?.message || e.reason}`); pv.log(`rejection: ${e.reason?.stack || e.reason}`); });
+window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.test(String(e.reason?.message || e.reason))) { e.preventDefault(); return; } /* a site that sends you on to its new address: not an error */ toast(`خطأ: ${e.reason?.message || e.reason}`); pv.log(`rejection: ${e.reason?.stack || e.reason}`); });
 
 // ---------- Start ----------
 (async () => {

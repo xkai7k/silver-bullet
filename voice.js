@@ -204,9 +204,11 @@
         if (working) { pending = chunks; return; } // finish the last one, then hear this one
         working = true;
         try {
-          const audio = new Float32Array(len); let o = 0;
+          const audio = new Float32Array(Math.max(len, 16000)); let o = 0; // at least 1 s (the rest silence): very short sounds trip the graphics card
           for (const c of chunks) { audio.set(c, o); o += c.length; }
-          const out = await withTimeout(asr(audio, { language: 'arabic', task: 'transcribe' }), 20000, 'wake asr');
+          let out;
+          try { out = await withTimeout(asr(audio, { language: 'arabic', task: 'transcribe' }), 20000, 'wake asr'); }
+          catch (e) { if (/WebGPU|zero-sized/i.test(String(e?.message || e))) { pv.log('voice: gpu hiccup, skipped one sound'); return; } throw e; }
           const text = (Array.isArray(out) ? out[0]?.text : out?.text || '').trim();
           if (text && data.settings?.voiceDebug) pv.log(`voice heard: ${text}`);
           if (document.body.classList.contains('playing-video')) return;
