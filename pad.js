@@ -27,7 +27,7 @@
     : /controller|gamepad|xbox|dualsense|dualshock|wireless controller|ds4/i.test(n) ? '🎮'
     : /mouse|ماوس|mx /i.test(n) ? '🖱' : /keyboard|كيبورد/i.test(n) ? '⌨' : '🔋';
   function drawChips() {
-    const all = [...btList.map((d) => ({ name: d.name, pct: d.battery })), ...(padBattery ? [padBattery] : [])];
+    const all = [...btList.map((d) => ({ name: d.name, pct: d.battery, approx: d.approx, wired: d.wired })), ...(padBattery ? [padBattery] : [])];
     // wireless things that don't tell their battery still show up (just the icon; hover for the name)
     const flat = (x) => String(x).toLowerCase().replace(/[^a-z0-9]/g, '');
     const pads = [...(navigator.getGamepads?.() || [])].filter(Boolean).map((g) => ({ name: g.id.replace(/\s*\(.*$/, ''), kind: 'pad' }));
@@ -37,8 +37,8 @@
       all.push({ name: w.name, pct: null });
     }
     if (all.length > 6) all.length = 6;
-    chips.innerHTML = all.map((d) => `<span class="bchip ${d.pct <= 20 ? 'low' : ''}" title="${esc(d.name)}${d.charging ? ' (يشحن)' : ''}">
-      ${iconFor(d.name)}${d.pct == null ? '' : ` ${d.pct}%`}${d.charging ? '⚡' : ''}</span>`).join('');
+    chips.innerHTML = all.map((d) => `<span class="bchip ${d.pct != null && d.pct <= 20 ? 'low' : ''}" title="${esc(d.name)}${d.charging ? ' (يشحن)' : ''}">
+      ${iconFor(d.name)}${d.wired ? ' 🔌' : d.pct == null ? '' : d.approx ? ` ${d.pct >= 100 ? 'ممتلئ' : d.pct >= 60 ? 'نص' : d.pct >= 25 ? 'قليل' : 'فاضي'}` : ` ${d.pct}%`}${d.charging ? '⚡' : ''}</span>`).join('');
   }
   // ---------- low battery: one alert at 30% (again at 15%), bottom-left, even while you're in a game ----------
   // remembered between launches, so opening the app again doesn't repeat the same alert
@@ -47,6 +47,7 @@
   function lowBatteryCheck(list) {
     for (const d of list) {
       const k = d.name, w = warned[k] || 0;
+      if (d.pct == null || d.wired) continue; // no level known (a cable, or a device that doesn't tell): never a false alarm
       if (d.charging || d.pct > 35) { if (warned[k]) { delete warned[k]; keepWarned(); } continue; }
       const level = d.pct <= 15 ? 2 : d.pct <= 30 ? 1 : 0;
       if (level > w) {

@@ -2563,6 +2563,12 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
   pv.log(`ui ready: ${data.pages.length} pages, ${allItems().length} items, theme ${data.theme}`);
   if (inElectron) setTimeout(() => deviceScan(false), 5000);
   if (inElectron) setTimeout(checkPaths, 25000);
+  // mods an older version left loose in a Switch port's folder: into its mods folder, once
+  if (inElectron && !data.settings.modsRepairedV1) setTimeout(async () => {
+    const games = allItems().filter((i) => (data.modsLog || []).some((l) => l.game === i.name) || /\.lnk$/i.test(i.target || ''));
+    const moved = await pv.modsRepair?.(games.map((i) => ({ id: i.id, name: i.name, target: i.target }))).catch(() => null);
+    if (Array.isArray(moved)) { data.settings.modsRepairedV1 = Date.now(); save(); if (moved.length) toast(`🧩 صلّحت مكان المود: ${moved.join('، ')} صار في مجلد mods حق اللعبة`, 7000); }
+  }, 12000);
   try {
     const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput').length;
     pv.log(`env: webgpu ${!!navigator.gpu}, mics ${mics}`);
@@ -2927,7 +2933,7 @@ function modsDrop(files) {
 async function installMods(g, files) {
   for (const src of files) {
     toast(`🧩 أركّب ${src.split(/[\\/]/).pop()} على ${g.name}…`);
-    const r = await pv.modsInstall({ rom: g.rom || '', console: g.console || g.platform || '', target: g.target || '', name: g.name }, src).catch((e) => ({ ok: false, msg: e.message }));
+    const r = await pv.modsInstall({ rom: g.rom || '', console: g.console || g.platform || '', target: g.target || '', args: [].concat(g.args || []), name: g.name }, src).catch((e) => ({ ok: false, msg: e.message }));
     (data.modsLog ||= []).push({ t: Date.now(), mod: src.split(/[\\/]/).pop(), game: g.name, ok: !!r?.ok, msg: r?.msg || '' });
     save();
     toast(r?.ok ? `✓ ${r.msg || 'تركّب'}` : `✗ ${r?.msg || 'ما قدرت أركّبه'}`);

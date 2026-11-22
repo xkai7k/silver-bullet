@@ -46,8 +46,18 @@
         try { asr = await T.pipeline('automatic-speech-recognition', id, { dtype: 'q8', progress_callback }); pv.log('voice: cpu model in a worker'); }
         catch (e) { pv.log(`voice: worker failed (${e?.message || e}), plain cpu`); try { T.env.backends.onnx.wasm.proxy = false; } catch {} asr = await T.pipeline('automatic-speech-recognition', id, { dtype: 'q8', progress_callback }); }
       }
-      transcriber = asr;
-      return asr;
+      // one sound at a time: two at once on the same model breaks it ("Session already started") and Akai goes deaf
+      let running = null;
+      const guarded = async (audio, opts) => {
+        while (running) { try { await running; } catch {} }
+        running = asr(audio, opts);
+        try { return await running; }
+        catch (e) { if (/session/i.test(String(e?.message || e))) { transcriber = null; pv.log('voice: model reset after ' + (e?.message || e)); } throw e; }
+        finally { running = null; }
+      };
+      guarded.busy = () => !!running;
+      transcriber = guarded;
+      return guarded;
     })();
     try { return await loading; } finally { loading = null; }
   }
@@ -207,8 +217,12 @@
         try {
           const audio = new Float32Array(Math.max(len, 16000)); let o = 0; // at least 1 s (the rest silence): very short sounds trip the graphics card
           for (const c of chunks) { audio.set(c, o); o += c.length; }
+          // a game in front: Akai stays quiet anyway, so don't take the graphics card from the game to listen
+          if (!document.hasFocus() && await pv.gameRunning?.().catch(() => false)) return;
+          const m = transcriber || await load(); // the model as it is now (it is rebuilt if it broke)
+          if (m.busy?.()) return; // still on the last sound: skip this one instead of piling up
           let out;
-          try { out = await withTimeout(asr(audio, { language: 'arabic', task: 'transcribe' }), 20000, 'wake asr'); }
+          try { out = await withTimeout(m(audio, { language: 'arabic', task: 'transcribe' }), 20000, 'wake asr'); }
           catch (e) { if (/WebGPU|zero-sized/i.test(String(e?.message || e))) { pv.log('voice: gpu hiccup, skipped one sound'); return; } throw e; }
           const text = ((Array.isArray(out) ? out[0]?.text : out?.text) || '').trim();
           if (text && data.settings?.voiceDebug) pv.log(`voice heard: ${text}`);

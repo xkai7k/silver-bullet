@@ -480,6 +480,36 @@ function setupRoms(ctx) {
     if (r.code !== 0) throw new Error('ما قدرت أفك الملف: ' + r.err);
     return { dir: tmp, tmp };
   }
+  // The folder of a PC port of a Switch game: it has romfs and a language.txt or an *_options.ini (Longshot, Hookshot…)
+  function portDir(gameDir, args) {
+    const isPort = (d) => { try { return fs.existsSync(path.join(d, 'romfs')) && (fs.existsSync(path.join(d, 'language.txt')) || fs.readdirSync(d).some((f) => /_options\.ini$/i.test(f)) || fs.existsSync(path.join(d, 'mods'))); } catch { return false; } };
+    const cands = [...(args || []).filter((a) => /^[a-z]:[\\/]/i.test(a)).map((a) => path.normalize(a)), gameDir];
+    try { for (const x of fs.readdirSync(gameDir, { withFileTypes: true })) if (x.isDirectory()) cands.push(path.join(gameDir, x.name)); } catch {}
+    return cands.find((d) => fs.existsSync(d) && isPort(d)) || null;
+  }
+  // Switch-style mods an older version copied loose into such a game's folder: move them to its mods folder (once)
+  ipcMain.handle('mods:repair', async (_e, items) => {
+    const moved = [];
+    for (const it of items || []) {
+      try {
+        let dir = null, args = [];
+        if (/\.lnk$/i.test(it.target || '')) { const l = await ctx.readLnk(it.target); if (!l?.target) continue; dir = path.dirname(l.target); args = [...String(l.args || '').matchAll(/"([^"]+)"|(\S+)/g)].map((x) => x[1] || x[2]); }
+        else if (/^[a-z]:\\.*\.exe$/i.test(it.target || '')) dir = path.dirname(it.target);
+        if (!dir) continue;
+        const port = portDir(dir, args); if (!port) continue;
+        for (const x of fs.readdirSync(dir, { withFileTypes: true })) {
+          const f = path.join(dir, x.name);
+          if (!x.isDirectory() || f === port || /^(mods|romfs|exefs)$/i.test(x.name)) continue;
+          if (!fs.existsSync(path.join(f, 'romfs')) && !fs.existsSync(path.join(f, 'exefs'))) continue;
+          const to = path.join(port, 'mods', x.name);
+          if (fs.existsSync(to)) continue;
+          fs.mkdirSync(path.dirname(to), { recursive: true });
+          fs.renameSync(f, to); moved.push(x.name); log('mod repaired', x.name, '→', to);
+        }
+      } catch (e) { log('mod repair failed', it.name, e.message); }
+    }
+    return moved;
+  });
   ipcMain.handle('mods:install', async (_e, info, src) => {
     let tmp = null;
     try {
@@ -536,9 +566,29 @@ function setupRoms(ctx) {
       let gameDir = null;
       const m = /^steam:\/\/rungameid\/(\d+)/.exec(info.target || '');
       if (m) gameDir = await ctx.steamGameDir(m[1]);
-      else if (/\.lnk$/i.test(info.target || '')) { const l = await ctx.readLnk(info.target); if (l?.target) gameDir = path.dirname(l.target); }
-      else if (/^[a-z]:\\/i.test(info.target || '')) gameDir = fs.statSync(info.target).isDirectory() ? info.target : path.dirname(info.target);
+      let lnkArgs = '';
+      if (/\.lnk$/i.test(info.target || '')) { const l = await ctx.readLnk(info.target); if (l?.target) { gameDir = path.dirname(l.target); lnkArgs = l.args || ''; } }
+      if (!gameDir && /^[a-z]:\\/i.test(info.target || '')) gameDir = fs.statSync(info.target).isDirectory() ? info.target : path.dirname(info.target);
       if (!gameDir || !fs.existsSync(gameDir)) return { ok: false, msg: 'ما لقيت مجلد اللعبة' };
+      // A Switch-style mod (romfs / exefs) on a PC port of a Switch game (Longshot, Hookshot, NX2navi…): it goes in the port's mods folder
+      const swParts = u.dir ? findDirs(u.dir, (n) => /^(romfs|exefs)$/i.test(n)) : [];
+      if (swParts.length) {
+        const port = portDir(gameDir, [...String(lnkArgs || '').matchAll(/"([^"]+)"|(\S+)/g)].map((x) => x[1] || x[2]).concat(info.args || []));
+        if (!port) return { ok: false, msg: 'هذا مود سويتش (romfs/exefs)، وما لقيت مجلد mods للعبة. حطه في مجلد mods حق اللعبة يدوي.' };
+        const modsDir = path.join(port, 'mods');
+        const roots = [...new Set(swParts.map((p) => path.dirname(p)))];
+        const names = [];
+        for (const r of roots) { const nm = r === u.dir ? modName : path.basename(r); copyDir(r, path.join(modsDir, nm)); names.push(nm); }
+        // a mod that asks for the game in English (language.txt): set it
+        const notes = listFiles(u.dir).filter((f) => /\.(txt|md)$/i.test(f)).map((f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } }).join('\n');
+        const lang = path.join(port, 'language.txt');
+        if (/language\.txt/i.test(notes) && /en-US/.test(notes) && fs.existsSync(lang)) {
+          const t = fs.readFileSync(lang, 'utf8'); const lines = t.split(/\r?\n/); const i = lines.findIndex((l) => l.trim() && !l.trim().startsWith('#'));
+          if (i >= 0 && lines[i].trim() !== 'en-US') { lines[i] = 'en-US'; fs.writeFileSync(lang, lines.join(t.includes('\r\n') ? '\r\n' : '\n')); }
+        }
+        log('mod installed', 'switch port', names.join(', '), '→', modsDir);
+        return { ok: true, msg: `انحط "${names.join('، ')}" في مجلد mods حق اللعبة، ويشتغل أول ما تفتحها. للإزالة: احذف مجلده من mods.` };
+      }
       if (!u.dir) { // a single file (a .pak, a .dll...) goes into the game folder
         const to = path.join(gameDir, path.basename(src));
         const bak = path.join(gameDir, '_sb_backup', String(Date.now())); if (fs.existsSync(to)) { fs.mkdirSync(bak, { recursive: true }); fs.copyFileSync(to, path.join(bak, path.basename(src))); }
