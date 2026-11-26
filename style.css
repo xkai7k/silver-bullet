@@ -2169,3 +2169,6 @@ dialog { --muted: color-mix(in srgb, var(--panel-text) 74%, transparent); }
 
 /* watch page: hint under an empty favourites row */
 #view .fav-hint { opacity: .75; font-size: 14px; margin: 2px 6px 16px; line-height: 1.6; }
+/* a game or app whose file was deleted or moved */
+.tile.missing .cover { filter: grayscale(1) brightness(.55); }
+.tile .miss-badge { position: absolute; top: 8px; right: 8px; z-index: 4; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; background: rgba(160, 40, 40, .92); color: #fff; }

@@ -956,11 +956,17 @@ async function libretroFetch(system) {
 ipcMain.handle('art:console', async (_e, system, name) => {
   const names = await libretroList(system);
   if (!names.length) return null;
-  const want = looseName(name);
-  if (want.length < 2) return null;
+  const want0 = looseName(name);
+  if (want0.length < 2) return null;
   const pick = (list) => list.find((n) => /\(USA/.test(n)) || list.find((n) => /\(Europe/.test(n)) || list[0];
-  let hits = names.filter((n) => looseName(n) === want);
-  if (!hits.length) hits = names.filter((n) => { const l = looseName(n); return l.length > 4 && (l.startsWith(want) || want.startsWith(l)); });
+  // file names often start with the publisher ("Disney Hannah Montana…", "DreamWorks Bee Movie…") and the archive doesn't
+  const wants = [...new Set([want0, want0.replace(/^(disneypixar|disney|dreamworks|marvel|nickelodeon|warnerbros|tomclancys)(?=[a-z0-9]{4})/, '')])];
+  let hits = [];
+  for (const want of wants) {
+    hits = names.filter((n) => looseName(n) === want);
+    if (!hits.length) hits = names.filter((n) => { const l = looseName(n); return l.length > 4 && (l.startsWith(want) || want.startsWith(l)); });
+    if (hits.length) break;
+  }
   const best = hits.length ? pick(hits) : null;
   return best ? `https://raw.githubusercontent.com/libretro-thumbnails/${system.replace(/ /g, '_')}/master/Named_Boxarts/${encodeURIComponent(best)}` : null;
 });

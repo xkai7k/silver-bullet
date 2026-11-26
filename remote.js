@@ -106,11 +106,11 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
       } catch (e) { log('remote error', e.message); try { json(res, { ok: false }, 500); } catch {} }
     });
     server.on('error', (e) => {
-      // the little "start from the phone" helper holds the address while the app is closed: ask it to let go, then take it
-      if (e.code === 'EADDRINUSE' && !start.retried) { start.retried = true; server = null; http.get(`http://127.0.0.1:${PORT}/release?k=${cfg.key}`, () => {}).on('error', () => {}); setTimeout(start, 1500); return; }
+      // busy: the start-from-phone helper (asked to let go) or the copy that is still closing after a restart: try a few times
+      if (e.code === 'EADDRINUSE' && (start.retried || 0) < 6) { start.retried = (start.retried || 0) + 1; server = null; http.get(`http://127.0.0.1:${PORT}/release?k=${cfg.key}`, () => {}).on('error', () => {}); setTimeout(start, 1500 * start.retried); return; }
       log('remote server failed', e.message); server = null;
     });
-    server.listen(PORT, '0.0.0.0', () => { start.retried = false; log('phone remote on', lanAddress(), PORT, host()); });
+    server.listen(PORT, '0.0.0.0', () => { start.retried = 0; log('phone remote on', lanAddress(), PORT, host()); });
     return true;
   }
   function stop() { try { server?.close(); } catch {} server = null; }

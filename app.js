@@ -367,7 +367,7 @@ function renderHome() {
   const items = allItems();
   const resumable = items.filter((i) => isWeb(i.target) && i.lastUrl && (i.lastUrl !== i.target || i.lastTime))
     .sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0)).slice(0, 8);
-  const recent = items.filter((i) => !isWeb(i.target) && i.lastOpened && findItem(i.id)?.page.type !== 'mods')
+  const recent = items.filter((i) => !isWeb(i.target) && i.lastOpened && findItem(i.id)?.page.type !== 'mods' && !(data.missing || []).includes(i.id)) // gone from the disk: not offered again
     .sort((a, b) => b.lastOpened - a.lastOpened).slice(0, 3);
   const sres = window.Series?.resumeList() || [];
   homeFocus = Math.max(0, Math.min(data.homeFocus ?? 0, data.pages.length - 1));
@@ -549,8 +549,8 @@ function tileHtml(i, p = page()) {
   const game = isGameItem(i, p);
   const a = game ? avgRating(i) : null, m = playMinutes(i);
   return `
-    <div class="tile ${selection.has(i.id) ? 'picked' : ''} ${isNewItem(i) ? 'is-new' : ''}" tabindex="0" data-item="${i.id}" draggable="true">
-      ${coverHtml(i)}${isNewItem(i) ? '<span class="new-badge">جديد</span>' : ''}
+    <div class="tile ${selection.has(i.id) ? 'picked' : ''} ${isNewItem(i) ? 'is-new' : ''} ${(data.missing || []).includes(i.id) ? 'missing' : ''}" tabindex="0" data-item="${i.id}" draggable="true">
+      ${coverHtml(i)}${isNewItem(i) ? '<span class="new-badge">جديد</span>' : ''}${(data.missing || []).includes(i.id) ? '<span class="miss-badge" title="ملفه انحذف أو انتقل">⚠ مو موجود</span>' : ''}
       ${a !== null ? `<div class="badge">★ ${a.toFixed(1)}</div>` : ''}
       ${game ? `<button class="rate-btn" data-rate="${i.id}" title="تقييم">★</button>` : ''}
       <div class="label">${esc(i.name)}</div>
@@ -1451,18 +1451,21 @@ emuForm.onsubmit = async (e) => {
 };
 // Find real box art for emulator games (matched against the archive's file list)
 async function fixConsoleArt(force = false) {
-  const ep = emuPage(); if (!ep) return;
+  // console games live on the games page now (item.rom + item.console), not only on the emulator page
+  const list = allItems().filter((it) => (it.rom && it.console) || (findItem(it.id)?.page?.type === 'emu' && it.platform));
   let fixed = 0, tried = 0;
-  for (const it of ep.items) {
+  for (const it of list) {
     if (it.artOk && !force) continue;
-    const sys = PLATFORMS[it.platform]?.thumbs; if (!sys) continue;
-    const raw = it.romFile ? it.romFile.split(/[\\/]/).pop().replace(/\.[^.]+$/, '') : it.name;
+    if (it.image && !/libretro-thumbnails/.test(it.image)) continue; // a picture it already has (or you picked) stays
+    const sys = PLATFORMS[it.console || it.platform]?.thumbs; if (!sys) continue;
+    const file = it.rom || it.romFile;
+    const raw = file ? file.split(/[\\/]/).pop().replace(/\.[^.]+$/, '') : it.name;
     tried++;
     const url = (await pv.consoleArt(sys, raw)) || (raw !== it.name ? await pv.consoleArt(sys, it.name) : null);
     if (url) { it.image = url; fixed++; } else if (!it.image) it.image = libretroCover(sys, raw); // let the region-name guesses try
     it.artOk = true;
   }
-  if (tried) { save(); if (currentPageId === ep.id) render(); pv.log(`console art: ${tried} games, found ${fixed}`); }
+  if (tried) { save(); if (currentPageId) renderPage(); pv.log(`console art: ${tried} games, found ${fixed}`); }
 }
 
 async function scanPlatform(pl) {
@@ -1512,6 +1515,14 @@ async function launchItem(item) {
   try { return await launchItemNow(item); } finally { launchesInFlight--; }
 }
 async function launchItemNow(item) {
+  // its file was deleted or moved: say so and offer to point at the new place, instead of failing quietly
+  if ((data.missing || []).includes(item.id)) {
+    if (confirm(`ما لقيت ملف "${item.name}" (انحذف أو انتقل).\nتبي تختار مكانه الجديد؟`)) {
+      const f = await pv.pickFile('file');
+      if (f) { if (item.rom) item.rom = f; else item.target = f; data.missing = data.missing.filter((x) => x !== item.id); save(); render(); toast(`✓ ${item.name} رجع`); }
+    }
+    return;
+  }
   item.lastOpened = Date.now();
   save();
   window.Music?.pauseForApp();
@@ -2471,7 +2482,9 @@ async function checkPaths() {
   if (pics) { save(); render(); }
   for (const it of gone) pv.log(`path missing: ${it.name} → ${it.rom || it.target}`);
   pv.log(`paths checked: ${items.length} items, ${pics} pictures to fetch again, ${gone.length} games/apps not on disk`);
+  const was = JSON.stringify(data.missing || []);
   data.missing = gone.map((i) => i.id);
+  if (JSON.stringify(data.missing) !== was) { save(); render(); }
 }
 
 // ---------- This PC: look at it once, then set the app up to fit it (not every PC is like the one it was made on) ----------
@@ -2830,9 +2843,9 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
   if (!data.artV4) { allItems().forEach((i) => delete i.artTried); data.artV4 = true; save(); }
   if (inElectron) {
     fixSteamArt();
-    const again = !data.consoleArtV4; // box art moved to a new address: look everything up again once
+    const again = !data.consoleArtV5; // box art moved to a new address: look everything up again once
     if (again) (emuPage()?.items || []).forEach((i) => { if (/thumbnails\.libretro\.com/.test(i.image || '')) i.image = ''; });
-    setTimeout(async () => { await fixConsoleArt(again); if (again) { data.consoleArtV4 = true; save(); } }, 6000);
+    setTimeout(async () => { await fixConsoleArt(again); if (again) { data.consoleArtV5 = true; save(); } }, 6000);
   }
   window.Music?.init();
   window.Pad?.init();

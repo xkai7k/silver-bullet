@@ -101,8 +101,24 @@
   }, true);
 
   const thumb = (s, i) => s.video
-    ? `<button class="shot video" data-i="${i}"><video src="${fileUrl(s.f)}#t=1" preload="metadata" muted></video><span>▶</span></button>`
+    ? `<button class="shot video" data-i="${i}"><video data-src="${fileUrl(s.f)}#t=1" preload="none" muted></video><span>▶</span></button>`
     : `<button class="shot" data-i="${i}"><img src="${fileUrl(s.f)}" loading="lazy" alt=""></button>`;
+
+  // video previews load only when they scroll into view, a few at a time: opening the gallery used to
+  // read the start of every clip at once (the app stalled for a second or two, and most stayed black)
+  let vidBusy = 0; const vidQueue = [];
+  const vidNext = () => {
+    while (vidBusy < 3 && vidQueue.length) {
+      const v = vidQueue.shift(); if (!v.isConnected || v.src) continue;
+      vidBusy++; let fin = false; const done = () => { if (fin) return; fin = true; vidBusy--; vidNext(); };
+      v.addEventListener('loadeddata', done, { once: true }); v.addEventListener('error', done, { once: true });
+      setTimeout(done, 8000); v.preload = 'metadata'; v.src = v.dataset.src;
+    }
+  };
+  const lazyVideos = (root) => {
+    const io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); vidQueue.push(e.target); } vidNext(); }, { rootMargin: '300px' });
+    root.querySelectorAll('video[data-src]').forEach((v) => io.observe(v));
+  };
 
   window.Shots = {
     sendToPhone,
@@ -126,6 +142,7 @@
       const imgs = l.filter((s) => !s.video).length, vids = l.length - imgs;
       box.innerHTML = `<div class="d-shots-head">📸 لقطاتك <small>${imgs} صورة${vids ? ` • ${vids} مقطع` : ''}</small> <button class="btn ghost sm" data-phone>📲 انقلها للجوال</button></div>
         <div class="d-shots-row">${l.slice(0, 14).map(thumb).join('')}${l.length > 14 ? `<button class="shot more" data-i="14">+${l.length - 14}</button>` : ''}</div>`;
+      lazyVideos(box);
       box.querySelectorAll('.shot').forEach((b) => b.onclick = (e) => { e.stopPropagation(); open(l, Number(b.dataset.i), item.name); });
       box.querySelector('[data-phone]').onclick = (e) => { e.stopPropagation(); sendToPhone(groupFor(item), item.name); };
     },
@@ -175,10 +192,10 @@
         const flat = order(all);
         const shown = flat.slice(0, 400);
         viewEl.innerHTML = tabs + head + `<div class="gl-bar"><label><input type="checkbox" id="glAll"> حدد الكل</label><span id="glSel"></span><button class="btn danger sm" id="glDel" disabled>🗑 احذف المحدد</button></div>
-          <div class="gl-list">${shown.map((f, i) => `<div class="gl-row" data-i="${i}"><input type="checkbox" data-c="${i}"><button class="gl-th" data-o="${i}">${f.video ? `<video src="${fileUrl(f.f)}#t=1" preload="metadata" muted></video><span>▶</span>` : `<img src="${fileUrl(f.f)}" loading="lazy" alt="">`}</button>
+          <div class="gl-list">${shown.map((f, i) => `<div class="gl-row" data-i="${i}"><input type="checkbox" data-c="${i}"><button class="gl-th" data-o="${i}">${f.video ? `<video data-src="${fileUrl(f.f)}#t=1" preload="none" muted></video><span>▶</span>` : `<img src="${fileUrl(f.f)}" loading="lazy" alt="">`}</button>
             <span class="gl-name" title="${esc(f.f)}"><b dir="auto">${esc(f.f.split(/[\\/]/).pop())}</b><small>${esc(f.game)} • ${when(f.t)}</small></span><span class="gl-size">${size(f.s)}</span><button class="btn ghost sm" data-del="${i}" title="للسلة">🗑</button></div>`).join('')}</div>
           ${flat.length > shown.length ? `<p class="hint">يعرض أول ${shown.length} من ${flat.length}.</p>` : ''}`;
-        wireTabs();
+        wireTabs(); lazyVideos(viewEl);
         viewEl.querySelector('#phoneAll')?.addEventListener('click', () => sendToPhone(allGroups()));
         const sel = new Set();
         const sync = () => { viewEl.querySelector('#glDel').disabled = !sel.size; viewEl.querySelector('#glSel').textContent = sel.size ? `${sel.size} محدد • ${size([...sel].reduce((a, i) => a + (shown[i].s || 0), 0))}` : ''; };
@@ -200,7 +217,7 @@
         return `<div class="g-row" data-c="${n}"><div class="group-title">${esc(g.name)} <small>${l.length} • ${size(l.reduce((a, f) => a + (f.s || 0), 0))}</small><span class="spacer"></span><button class="btn ghost sm" data-ph="${n}">📲 للجوال</button></div>
           <div class="d-shots-row big">${l.slice(0, 14).map(thumb).join('')}${l.length > 14 ? `<button class="shot more" data-i="14">+${l.length - 14}</button>` : ''}</div></div>`;
       }).join('');
-      wireTabs();
+      wireTabs(); lazyVideos(viewEl);
       viewEl.querySelector('#phoneAll')?.addEventListener('click', () => sendToPhone(allGroups()));
       viewEl.querySelectorAll('.g-row').forEach((row) => {
         const g = groups[Number(row.dataset.c)];
