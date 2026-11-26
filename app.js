@@ -2308,6 +2308,9 @@ function closePop(now) {
 window.spPopOpen = openPop;
 $('#spotifyBar').addEventListener('mouseenter', openPop);
 $('#spotifyBar').addEventListener('mouseleave', () => { if (!spDragging) closePop(); });
+// the mouse can leave without a mouseleave (window hidden, another app in front): the popup (and its Spotify polling) doesn't stay stuck open
+window.addEventListener('blur', () => { if (!spDragging) closePop(true); });
+document.documentElement.addEventListener('mouseleave', () => { if (!spDragging) closePop(); });
 spPop.addEventListener('click', (e) => e.stopPropagation());
 {
   const seek = spPop.querySelector('.spp-seek');
@@ -2788,6 +2791,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
       else if (k === 'card') { const g = allItems().find((i) => i.ratings && Object.keys(i.ratings).length) || { ...(page('games')?.items[0] || {}), ratings: { 'الجرافيكس': 9, 'الجيم بلاي': 8, 'القصة': 7, 'الساوند تراك': 9 }, ratingNote: 'لعبة ممتعة مع الشباب' }; window.RateCard?.draw(g).then((u) => { const d = document.createElement('dialog'); d.innerHTML = `<img src="${u}" style="max-height:80vh;display:block">`; document.body.appendChild(d); d.showModal(); }); }
       else if (k === 'showart') pv.showCover?.(decodeURIComponent(v)).then((r) => pv.log('showart ' + v + ' → ' + JSON.stringify(r) + ' name=' + showNameOf('مشاهدة مسلسل Friends الموسم الاول الحلقة 1 مترجمة - توب سينما', '')));
       else if (k === 'selftest') selfTest();
+      else if (k === 'free') { pv.memLog?.('before free'); pv.freeMemory?.(); setTimeout(() => pv.memLog?.('after free'), 4000); }
       else if (k === 'open') { const q = searchKey(decodeURIComponent(v)); const it = allItems().find((i) => searchKey(i.name).includes(q)); if (it) launchItem(it); pv.log('debug open ' + (it?.name || 'none')); }
       else if (k === 'click') { const el = document.querySelector(decodeURIComponent(v)); pv.log('debug click ' + decodeURIComponent(v) + ': ' + (el ? 'ok' : 'not found')); el?.click(); }
       else if (k === 'state') pv.log('debug state: party ' + JSON.stringify({ on: window.Party?.on, panel: !!document.querySelector('#partyPanel'), web: !$('#webWrap').hidden, btn: (() => { const b = $('#wvParty'); return b ? [b.hidden, b.offsetParent !== null, getComputedStyle(b).display] : 'none'; })() }));
@@ -3206,4 +3210,20 @@ async function installMods(g, files) {
     toast(r?.ok ? `✓ ${r.msg || 'تركّب'}` : `✗ ${r?.msg || 'ما قدرت أركّبه'}`, 9000);
   }
   if (currentPageId && page()?.type === 'mods') renderPage();
+}
+
+// ---------- Away from the PC (10 minutes with no mouse or keyboard, or locked): Akai's ear sleeps ----------
+pv.onAway?.((away) => {
+  if (away) window.Voice?.sleep?.();
+  else { pv.log('voice: you are back, listening again'); window.Voice?.wakeSync?.(); }
+});
+
+// ---------- Memory: while the app sits in the background, hand back what it can draw again later ----------
+// (picture caches and loose JavaScript memory). Akai's ear keeps listening; nothing you see changes.
+{
+  let idleT = null;
+  const goIdle = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (document.hasFocus()) return; pv.freeMemory?.(); pv.log('memory: background, caches handed back'); }, 90 * 1000); };
+  window.addEventListener('blur', goIdle);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) goIdle(); });
+  window.addEventListener('focus', () => clearTimeout(idleT));
 }

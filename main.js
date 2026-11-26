@@ -1633,6 +1633,25 @@ ipcMain.handle('overlay:note', (_e, icon, title, body) => {
   } catch (e) { log('note failed', e.message); return false; }
 });
 ipcMain.handle('rest:wake', () => { setRest(false, 'esc'); return true; });
+// Away from the PC: nobody talks to Akai, so his ear sleeps and hands its memory back (~half a GB with the mic).
+// Not while a game or a full-screen video is in front (a controller doesn't count as "using the PC" to Windows).
+let away = false, awayT = null;
+function checkAway() {
+  clearTimeout(awayT);
+  let idle = 0, locked = false;
+  try { const { powerMonitor } = require('electron'); idle = powerMonitor.getSystemIdleTime(); locked = powerMonitor.getSystemIdleState(1) === 'locked'; } catch {}
+  const now = !restState.game && (locked || idle >= 10 * 60);
+  if (now !== away && !(away && !now && idle > 5 && !locked)) { // back = a key or the mouse moved in the last few seconds
+    away = now; log(away ? `away (${locked ? 'locked' : Math.round(idle / 60) + ' min idle'}): voice sleeps` : 'back: voice wakes');
+    try { mainWin?.webContents.send('away', away); } catch {}
+    if (away) setTimeout(() => memLog('away'), 60000);
+  }
+  awayT = setTimeout(checkAway, away ? 3000 : 30000); // while away, look often so it's listening again right after you're back
+}
+app.whenReady().then(() => {
+  setTimeout(checkAway, 60000);
+  try { const { powerMonitor } = require('electron'); powerMonitor.on('lock-screen', checkAway); powerMonitor.on('unlock-screen', checkAway); } catch {}
+});
 // memory, measured: logged now and then so a heavy part shows up
 function memLog(tag) {
   try {

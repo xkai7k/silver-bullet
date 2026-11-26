@@ -326,7 +326,14 @@
   function wakeStop() { wake?.stop(); }
   function wakeSync() { if (data.settings?.wakeOn) { if (!wake) wakeStart(); } else wakeStop(); }
 
-  window.Voice = { start, preload, reset() { transcriber?.dispose?.(); transcriber = null; gpuBroke = false; ear?.dispose(); ear = null; }, release() { if (!busy && transcriber) { transcriber.dispose(); transcriber = null; pv.log('voice: big model let go (rest)'); } }, wakeSync, wakeStop };
+  // you're away from the PC: stop listening and let the ear go (its side thread, the mic and Chromium's sound
+  // services behind it). Coming back starts it again in a few seconds.
+  function sleep() {
+    wakeStop();
+    if (!busy) { try { ear?.dispose(); } catch {} ear = null; try { transcriber?.dispose?.(); } catch {} transcriber = null; }
+    pv.log('voice: asleep while you are away (ear and mic let go)');
+  }
+  window.Voice = { sleep, start, preload, reset() { transcriber?.dispose?.(); transcriber = null; gpuBroke = false; ear?.dispose(); ear = null; }, release() { if (!busy && transcriber) { transcriber.dispose(); transcriber = null; pv.log('voice: big model let go (rest)'); } }, wakeSync, wakeStop };
   $('#micBtn').onclick = (e) => { e.stopPropagation(); start(); };
   pv.onVoiceStart?.(start);
 })();
