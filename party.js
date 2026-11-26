@@ -53,7 +53,7 @@
   const isOpen = (g) => g.dc?.readyState === 'open' || (g.relay && Date.now() - (g.seen || 0) < 20000);
   function sendTo(g, msg) {
     if (g.dc?.readyState === 'open') { try { g.dc.send(msg); return; } catch {} }
-    send('CANDIDATE', g.id, { sb: JSON.parse(msg), connectionId: 'sb' });
+    send('CANDIDATE', g.id, { type: 'data', candidate: { candidate: '', sdpMid: '0', sdpMLineIndex: 0 }, sb: JSON.parse(msg), connectionId: 'sb' });
   }
   let stateMsg = '';
   const newId = () => 'sb' + Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
@@ -65,7 +65,7 @@
     const pc = new RTCPeerConnection({ iceServers: ICE });
     const g = { id: src, name: String(p.name || 'ضيف').slice(0, 24), pc, dc: null, early: [], relay: true, seen: Date.now(), joined: was };
     party.guests.set(src, g); drawViewers();
-    pc.onicecandidate = (e) => e.candidate && send('CANDIDATE', src, { c: e.candidate, connectionId: 'sb' });
+    pc.onicecandidate = (e) => e.candidate && send('CANDIDATE', src, { type: 'media', candidate: e.candidate, c: e.candidate, connectionId: 'sb' });
     pc.onconnectionstatechange = () => { api.log?.(`party link to ${g.name}: ${pc.connectionState}`); if (pc.connectionState === 'failed') { try { pc.close(); } catch {} g.pc = null; g.dc = null; /* direct link failed: keep them on the backup path */ } };
     pc.ondatachannel = (e) => {
       g.dc = e.channel;
@@ -73,7 +73,7 @@
       g.dc.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } if (m.t === 'req') { api.log?.(`party request from ${g.name}: ${m.what}`); try { ask(g, m.what); } catch (e) { api.log?.('party ask failed: ' + e.message); toastP(`🙋 ${g.name} ${WHAT[m.what] || ''}`); } } };
       g.dc.onclose = () => { if (!g.relay || Date.now() - (g.seen || 0) > 20000) dropGuest(src); };
     };
-    await pc.setRemoteDescription({ type: 'offer', sdp: p.sdp });
+    await pc.setRemoteDescription({ type: 'offer', sdp: typeof p.sdp === 'string' ? p.sdp : p.sdp.sdp });
     for (const c of g.early.splice(0)) pc.addIceCandidate(c).catch(() => {});
     // the friend's page made room for one picture and one sound: fill them with this window (or leave empty until you share)
     for (const t of pc.getTransceivers()) {
@@ -84,7 +84,7 @@
     }
     const ans = await pc.createAnswer();
     await pc.setLocalDescription(ans);
-    send('ANSWER', src, { sdp: ans.sdp, connectionId: 'sb' });
+    send('ANSWER', src, { type: 'media', sdp: { type: 'answer', sdp: ans.sdp }, connectionId: 'sb' });
   }
   function dropGuest(id, quiet) {
     const g = party?.guests.get(id); if (!g) return;
@@ -213,7 +213,7 @@
     if (!party) return;
     const p = party; party = null;
     clearInterval(p.poll); clearInterval(p.hb);
-    for (const g of p.guests.values()) { try { g.dc?.readyState === 'open' ? g.dc.send('{"t":"end"}') : p.ws?.send(JSON.stringify({ type: 'CANDIDATE', dst: g.id, payload: { sb: { t: 'end' }, connectionId: 'sb' } })); } catch {} try { g.pc?.close(); } catch {} }
+    for (const g of p.guests.values()) { try { g.dc?.readyState === 'open' ? g.dc.send('{"t":"end"}') : p.ws?.send(JSON.stringify({ type: 'CANDIDATE', dst: g.id, payload: { type: 'data', candidate: { candidate: '', sdpMid: '0', sdpMLineIndex: 0 }, sb: { t: 'end' }, connectionId: 'sb' } })); } catch {} try { g.pc?.close(); } catch {} }
     p.stream?.getTracks().forEach((t) => t.stop());
     try { p.ws.onclose = null; p.ws.close(); } catch {}
     drawViewers(); $('#partyPanel')?.remove(); const rq = $('#partyReqs'); if (rq) rq.innerHTML = '';

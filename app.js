@@ -3026,9 +3026,10 @@ function remoteNet(on, key) {
       else if (m.type === 'ID-TAKEN') { ws.onclose = null; ws.close(); setTimeout(connect, 8000); }
       else if (m.type === 'CANDIDATE' && m.payload?.sb?.t === 'api') {
         const q = m.payload.sb;
+        if (!remoteNet.seen) { remoteNet.seen = true; pv.log('phone remote: first call from anywhere (' + q.kind + ')'); }
         const r = await pv.remoteCall(q.kind, q.body).catch(() => ({ ok: false }));
         const txt = JSON.stringify(r), size = 12000, n = Math.max(1, Math.ceil(txt.length / size));
-        for (let i = 0; i < n; i++) ws.send(JSON.stringify({ type: 'CANDIDATE', dst: m.src, payload: { sb: { t: 'res', id: q.id, i, n, d: txt.slice(i * size, (i + 1) * size) }, connectionId: 'sb' } }));
+        for (let i = 0; i < n; i++) ws.send(JSON.stringify({ type: 'CANDIDATE', dst: m.src, payload: { type: 'data', candidate: { candidate: '', sdpMid: '0', sdpMLineIndex: 0 }, sb: { t: 'res', id: q.id, i, n, d: txt.slice(i * size, (i + 1) * size) }, connectionId: 'sb' } }));
       }
     };
     ws.onclose = () => { clearInterval(o.hb); if (!o.closed) setTimeout(connect, 5000); };

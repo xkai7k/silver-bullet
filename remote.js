@@ -11,7 +11,7 @@ const crypto = require('crypto');
 module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getWin, mediaAsk, mediaKey, setVolume, torAdd, lanAddress, qrSvgOf }) {
   const PORT = 8766;
   const cfgFile = path.join(app.getPath('userData'), 'remote.json');
-  let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8')); } catch {}
+  let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8').replace(/^\uFEFF/, '')); } catch {}
   const saveCfg = () => { try { fs.writeFileSync(cfgFile, JSON.stringify(cfg)); } catch {} };
   if (!cfg.key) { cfg.key = crypto.randomBytes(9).toString('hex'); saveCfg(); }
   let server = null, state = { games: [], lib: [], watch: [], shows: [], name: '', torrents: [], lang: 'ar', akai: {} };
@@ -209,7 +209,7 @@ function relayConn(){const r=()=>Math.random().toString(36).slice(2,12);ws=new W
  ws.onclose=()=>{wsOpen=false;clearInterval(hb);setTimeout(relayConn,3000)};}
 if(RELAY)relayConn();
 function call(kind,body){if(!RELAY)return kind==='state'?fetch('/api/state?k='+K,{cache:'no-store'}).then((r)=>r.json()):fetch('/api/cmd?k='+K,{method:'POST',body:JSON.stringify(body)}).then((r)=>r.json());
- return new Promise((res,rej)=>{const go=()=>{const id=++cid;calls.set(id,{res,rej});try{ws.send(JSON.stringify({type:'CANDIDATE',dst:'sbr-'+K,payload:{sb:{t:'api',id,kind,body},connectionId:'sb'}}))}catch(err){}setTimeout(()=>{if(calls.has(id)){calls.delete(id);parts.delete(id);rej(new Error('timeout'))}},15000)};wsOpen?go():wq.push(go)});}
+ return new Promise((res,rej)=>{const go=()=>{const id=++cid;calls.set(id,{res,rej});try{ws.send(JSON.stringify({type:'CANDIDATE',dst:'sbr-'+K,payload:{type:'data',candidate:{candidate:'',sdpMid:'0',sdpMLineIndex:0},sb:{t:'api',id,kind,body},connectionId:'sb'}}))}catch(err){}setTimeout(()=>{if(calls.has(id)){calls.delete(id);parts.delete(id);rej(new Error('timeout'))}},15000)};wsOpen?go():wq.push(go)});}
 const cmd=(o)=>call('cmd',o).catch(()=>({ok:false}));
 document.querySelectorAll('.tabs button').forEach((b)=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach((x)=>x.classList.toggle('on',x===b));for(const s of ['games','watch','music','dl','shots','akai'])$('#'+s).hidden=s!==b.dataset.t;try{localStorage.setItem('sbtab',b.dataset.t)}catch{}if(b.dataset.t==='akai')drawAkai();});
 document.querySelectorAll('[data-g]').forEach((b)=>b.onclick=()=>{gt=b.dataset.g;document.querySelectorAll('[data-g]').forEach((x)=>x.classList.toggle('on',x===b));drawGames();});

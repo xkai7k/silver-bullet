@@ -114,7 +114,7 @@
       let m; try { m = JSON.parse(e.data); } catch { return; }
       if (m.type === 'OPEN') { relay({ t: 'hello', name }); call(name); }
       else if (m.type === 'CANDIDATE' && m.payload?.sb) onMsg(m.payload.sb); // the backup path through the signal server
-      else if (m.type === 'ANSWER' && pc) { await pc.setRemoteDescription({ type: 'answer', sdp: m.payload.sdp }).catch(() => {}); for (const c of early.splice(0)) pc.addIceCandidate(c).catch(() => {}); }
+      else if (m.type === 'ANSWER' && pc) { await pc.setRemoteDescription({ type: 'answer', sdp: typeof m.payload.sdp === 'string' ? m.payload.sdp : m.payload.sdp?.sdp }).catch(() => {}); for (const c of early.splice(0)) pc.addIceCandidate(c).catch(() => {}); }
       else if (m.type === 'CANDIDATE' && pc && m.payload?.c) { if (pc.remoteDescription) pc.addIceCandidate(m.payload.c).catch(() => {}); else early.push(m.payload.c); }
       else if (m.type === 'EXPIRE') { lost('ما لقيته. يمكن قفل "تابع معي" أو البرنامج.'); }
     };
@@ -128,7 +128,7 @@
     pc.addTransceiver('audio', { direction: 'recvonly' });
     const stream = new MediaStream();
     pc.ontrack = (e) => { stream.addTrack(e.track); const v = $('#vid'); if (v.srcObject !== stream) v.srcObject = stream; v.play().catch(() => { $('#unmute').hidden = false; }); };
-    pc.onicecandidate = (e) => e.candidate && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { c: e.candidate, connectionId: 'sb' } }));
+    pc.onicecandidate = (e) => e.candidate && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { type: 'media', candidate: e.candidate, c: e.candidate, connectionId: 'sb' } }));
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') { retry = 0; setStatus('متصل', true); if (/مو متصل/.test($('#sent').textContent)) $('#sent').textContent = ''; }
       if (pc.connectionState === 'failed' && !(lastState && Date.now() - lastState < 7000)) lost('انقطع الاتصال. يمكن الشبكة تمنع الاتصال المباشر.');
@@ -138,11 +138,11 @@
     dc.onclose = () => {};
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    ws.send(JSON.stringify({ type: 'OFFER', dst: host, payload: { sdp: offer.sdp, name, type: 'media', connectionId: 'sb' } }));
+    ws.send(JSON.stringify({ type: 'OFFER', dst: host, payload: { sdp: { type: 'offer', sdp: offer.sdp }, name, metadata: { name }, type: 'media', connectionId: 'sb' } }));
     setStatus('ينتظر الرد…');
     setTimeout(() => { if (!state && !ended) lost('ما رد. تأكد إن "تابع معي" شغّال عنده والبرنامج مفتوح.'); }, 20000);
   }
-  function relay(m) { try { ws?.readyState === 1 && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { sb: m, connectionId: 'sb' } })); } catch {} }
+  function relay(m) { try { ws?.readyState === 1 && ws.send(JSON.stringify({ type: 'CANDIDATE', dst: host, payload: { type: 'data', candidate: { candidate: '', sdpMid: '0', sdpMLineIndex: 0 }, sb: m, connectionId: 'sb' } })); } catch {} }
   function onMsg(m) { if (!m || !m.t) return; if (m.t === 'state' && !m.at) return; if (m.t === 'state') { lastState = Date.now(); onState(m); } if (m.t === 'restart') { lastState = 0; lost('البرنامج عنده يعيد التشغيل… أرجع أتصل لحالي'); } if (m.t === 'answer') { $('#sent').textContent = m.yes ? '✓ وافق على طلبك' : '✕ ما وافق هالمرة'; setTimeout(() => { $('#sent').textContent = ''; }, 4000); } if (m.t === 'end') { ended = true; lost('خلّص "تابع معي". شكراً إنك تابعت 👋'); } }
 
   function lost(t) {
