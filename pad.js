@@ -54,10 +54,10 @@
         warned[k] = level; keepWarned();
         const msg = `${d.name}: باقي ${d.pct}% — اشحنه ${level === 2 ? 'الحين' : 'قريب'}`;
         // over a game: a small note in the bottom-left that shows on top of it; in the app: the usual card
-        if (!document.hasFocus() && pv.overlayNote) pv.overlayNote(iconFor(d.name), 'الشحن قرب يخلص', `${d.name} · ${d.pct}%`); else try { new Notification('🔋 الشحن قرب يخلص', { body: msg, silent: false }); } catch {}
+        if (!document.hasFocus() && pv.overlayNote) pv.overlayNote(iconFor(d.name), 'الشحن قرب يخلص', `${d.name} • ${d.pct}%`); else try { new Notification('🔋 الشحن قرب يخلص', { body: msg, silent: false }); } catch {}
         let box = document.getElementById('lowBat');
         if (!box) { box = document.createElement('div'); box.id = 'lowBat'; document.body.appendChild(box); }
-        box.innerHTML = `<span class="lb-ico">${iconFor(d.name)}</span><div><b>الشحن قرب يخلص</b><small>${esc(d.name)} · ${d.pct}%</small></div><i style="--p:${d.pct}%"></i>`;
+        box.innerHTML = `<span class="lb-ico">${iconFor(d.name)}</span><div><b>الشحن قرب يخلص</b><small>${esc(d.name)} • ${d.pct}%</small></div><i style="--p:${d.pct}%"></i>`;
         box.classList.add('show');
         clearTimeout(box._t); box._t = setTimeout(() => box.classList.remove('show'), 12000);
         box.onclick = () => box.classList.remove('show');

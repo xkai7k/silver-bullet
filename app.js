@@ -345,7 +345,7 @@ function render() {
   $('#emuBtn').hidden = !(p && p.type === 'emu');
   $('#addBtn').hidden = true; // adding happens from the + tile / card
   if (p) $('#title').innerHTML = `${pageIcon(p, 'title-ico')}<span>${esc(p.name)}</span>`; else $('#title').textContent = greeting();
-  $('#subtitle').textContent = p ? pageCount(p, true) : [new Date().toLocaleDateString('ar-SA-u-ca-gregory', { weekday: 'long', day: 'numeric', month: 'long' }), new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'long' }), window.nextEventLine?.() || ''].filter(Boolean).join(' · ');
+  $('#subtitle').textContent = p ? pageCount(p, true) : [new Date().toLocaleDateString('ar-SA-u-ca-gregory', { weekday: 'long', day: 'numeric', month: 'long' }), new Date().toLocaleDateString('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'long' }), window.nextEventLine?.() || ''].filter(Boolean).join('، ');
   setBackground('');
   renderDrawer();
   window.SB?.drawTop();
@@ -404,12 +404,12 @@ function renderHome() {
         ${sres.map((r) => `
           <div class="resume" tabindex="0" data-sres="${esc(r.dir)}">
             <div class="thumb">🎞️</div>
-            <div><b>${esc(r.dir.split(/[\\/]/).pop())}</b><small>${esc(r.file.split(/[\\/]/).pop().replace(/\.[^.]+$/, ''))} · ⏱ ${fmtClock(r.p.t)}</small></div>
+            <div><b>${esc(r.dir.split(/[\\/]/).pop())}</b><small>${esc(r.file.split(/[\\/]/).pop().replace(/\.[^.]+$/, ''))} • ⏱ ${fmtClock(r.p.t)}</small></div>
           </div>`).join('')}
         ${resumable.map((i) => `
           <div class="resume" tabindex="0" data-item="${i.id}">
             <div class="thumb" style="${i.image ? `background-image:url('${esc(toImageUrl(i.image))}')` : ''}">${i.image ? '' : esc(i.name[0])}</div>
-            <div><b>${esc(i.name)}</b><small>${esc([i.lastNote, i.lastTime ? `⏱ ${fmtClock(i.lastTime)}` : ''].filter(Boolean).join(' · ') || 'آخر مكان فتحته')}</small></div>
+            <div><b>${esc(i.name)}</b><small>${esc([i.lastNote, i.lastTime ? `⏱ ${fmtClock(i.lastTime)}` : ''].filter(Boolean).join(' • ') || 'آخر مكان فتحته')}</small></div>
           </div>`).join('')}
       </div>` : ''}`;
 
@@ -554,7 +554,7 @@ function tileHtml(i, p = page()) {
       ${a !== null ? `<div class="badge">★ ${a.toFixed(1)}</div>` : ''}
       ${game ? `<button class="rate-btn" data-rate="${i.id}" title="تقييم">★</button>` : ''}
       <div class="label">${esc(i.name)}</div>
-      ${i.desc ? `<div class="sub desc">${esc(i.desc)}</div>` : `<div class="sub">${esc([...(i.categories || []).filter((c) => c !== i.platformLabel), m ? fmtTime(m) : ''].filter(Boolean).join(' · '))}</div>`}
+      ${i.desc ? `<div class="sub desc">${esc(i.desc)}</div>` : `<div class="sub">${esc([...(i.categories || []).filter((c) => c !== i.platformLabel), m ? fmtTime(m) : ''].filter(Boolean).join(' • '))}</div>`}
     </div>`;
 }
 
@@ -595,7 +595,7 @@ function renderPage() {
     let body;
     if (p.type === 'emu' && currentFilter === 'all' && items.length) {
       const groups = new Map();
-      for (const i of items) { const g = i.platformLabel || 'أخرى'; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(i); }
+      for (const i of items) { const g = i.platformLabel || (i.emuId ? 'المحاكيات' : 'أخرى'); /* emulators have no label: they used to land in "أخرى" */ if (!groups.has(g)) groups.set(g, []); groups.get(g).push(i); }
       body = [...groups].map(([g, list]) => `
         <div class="group-title">${esc(g)} <small>${list.length}</small></div>
         <div class="tiles ${g === 'المحاكيات' || list.every((i) => i.emuId) ? 'square' : 'portrait'}">${list.map((i) => tileHtml(i, p)).join('')}</div>`).join('') + `<div class="tiles portrait" style="margin-top:22px">${addTile}</div>`;
@@ -606,11 +606,15 @@ function renderPage() {
       body = (stores.length ? `<div class="group-title">🛒 المتاجر <small>${stores.length}</small></div>
         <div class="tiles square stores-row">${stores.map((i) => tileHtml(i, p)).join('')}</div>` : '') + `<div class="group-title">🎮 مثبتة على جهازك <small>${inst.length}</small></div>
         <div class="tiles portrait">${inst.map((i) => tileHtml(i, p)).join('')}${addTile}</div>
-        <div class="group-title">📚 مكتبتي <small>ألعاب عندي بس مو مثبتة · ${owned.length}</small><button class="btn ghost sm" id="ownedSync" title="يقرأ مكتبة ستيم وإيبك من جهازك">⟳ جيب ألعابي من ستيم وإيبك</button></div>
+        <div class="group-title">📚 مكتبتي <small>ألعاب عندي بس مو مثبتة • ${owned.length}</small><button class="btn ghost sm" id="ownedSync" title="يقرأ مكتبة ستيم وإيبك من جهازك">⟳ جيب ألعابي من ستيم وإيبك</button></div>
         <div class="tiles portrait">${owned.map((i) => tileHtml(i, p)).join('')}<div class="tile add" id="addOwned"><div class="cover"><span class="initial">+</span></div><div class="label">لعبة عندي</div></div></div>`;
     } else if (p.id === 'watch' || p.type === 'watch') {
-      body = `<div class="group-title">📺 التطبيقات والمواقع <small>${items.length}</small></div>
-        <div class="tiles square">${items.map((i) => tileHtml(i, p)).join('')}${addTile}</div>
+      // favourites first (right-click → ⭐, or the star on the phone), then everything else
+      const favs = items.filter((i) => i.fav), rest = items.filter((i) => !i.fav);
+      body = `<div class="group-title">⭐ المفضلة <small>${favs.length}</small></div>
+        ${favs.length ? `<div class="tiles square">${favs.map((i) => tileHtml(i, p)).join('')}</div>` : '<p class="hint fav-hint">كليك يمين على أي موقع واختر "⭐ أضفه للمفضلة" عشان يطلع هنا.</p>'}
+        <div class="group-title">📺 الباقي <small>${rest.length}</small></div>
+        <div class="tiles square">${rest.map((i) => tileHtml(i, p)).join('')}${addTile}</div>
         <div class="group-title">🎞️ مسلسلاتي وأفلامي <small>من مجلدات جهازك</small><span class="spacer"></span><button class="btn ghost sm" id="addSeriesDir">＋ مجلد</button></div>
         <div id="seriesBox"><p class="hint">أدوّر في مجلداتك…</p></div>`;
     } else {
@@ -663,6 +667,7 @@ function renderPage() {
       { label: 'فتح', run: () => launchItem(item) },
       ...(isGameItem(item, p) ? [{ label: '★ تقييم', run: () => openRater(item.id) }] : []),
       { label: 'تعديل', run: () => openEditor(item.id) },
+      ...(p.id === 'watch' || p.type === 'watch' ? [{ label: item.fav ? '☆ شيله من المفضلة' : '⭐ أضفه للمفضلة', run: () => { item.fav = !item.fav; save(); renderPage(); pushRemote(); } }] : []),
       { label: '📌 ثبّت فوق (دخول سريع)', run: () => window.SB?.pin(item.id) },
       ...((data.moods || []).length ? [{ label: '✨ أضفه لمود…', run: () => setTimeout(() => showCtx(e, data.moods.map((m) => ({ label: `${m.emoji || ''} ${m.name}${m.items.includes(item.id) ? ' ✓' : ''}`, run: () => { m.items = m.items.includes(item.id) ? m.items.filter((x) => x !== item.id) : [...m.items, item.id]; save(); toast(m.items.includes(item.id) ? `انضاف لمود ${m.name}` : `انشال من مود ${m.name}`); } }))), 0) }] : []),
       { label: '🖼 غيّر الصورة (من جهازك)', run: async () => { const f = await pv.pickFile('image'); if (f) { item.image = f; delete item.noArt; delete item.hero; save(); renderPage(); toast('تم'); } } },
@@ -704,7 +709,8 @@ function renderPage() {
 // ---------- Torrent library (Games ← 🧲): game torrents kept for later; one press downloads, unpacks and adds the game ----------
 let gamesTab = 'games';
 const torClean = (n) => String(n || '').replace(/\.torrent$/i, '').replace(/[\[(][^\])]*[\])]/g, ' ').replace(/[._]+/g, ' ').replace(/\b(fitgirl|dodi|repack|elamigos|gog|codex|plaza|empress|rune|tenoke|multi\d*|v?\d+(\.\d+){1,3}|build \d+|nsz|nsp|xci|iso|pc|ps\d|switch)\b/gi, ' ').replace(/[-+]+\s*$/, '').replace(/\s+/g, ' ').trim();
-const torHuman = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? Math.round(b / 1048576) + ' MB' : '';
+const ltr = (t) => t ? '\u2066' + t + '\u2069' : t; // sizes stay "20 GB" inside Arabic text, not "GB 20"
+const torHuman = (b) => ltr(b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? Math.round(b / 1048576) + ' MB' : '');
 async function addToTorLib(file, downloadingNow, fromShare) {
   const r = await pv.torlibSave(file); if (!r) return downloadingNow ? null : toast('ما قدرت أقرأ ملف التورنت');
   data.torLib ||= [];
@@ -1291,7 +1297,7 @@ pv.onEmuProgress((m) => {
   else { const o = emuRows[m.name]; if (m.step === 'download' && m.got) { m.t0 = o?.t0 || Date.now(); m.speed = m.got / Math.max(0.5, (Date.now() - m.t0) / 1000); } emuRows[m.name] = { ...(o || {}), ...m }; }
   emuProg.hidden = !!emuProg.dataset.gone;
   const rows = Object.values(emuRows);
-  const label = (r) => r.step === 'wait' ? '⏳ بالدور' : r.step === 'download' ? (r.cores ? `${r.cores[0]} من ${r.cores[1]}` : `⬇ ${r.pct || 0}%` + (r.total ? ` · ${emb(r.got || 0)} من ${emb(r.total)} MB` : r.got ? ` · ${emb(r.got)} MB` : '')) : r.step === 'extract' ? '📦 فك الضغط' : r.step === 'done' ? '✓ جاهز' : '✗ ما نزل';
+  const label = (r) => r.step === 'wait' ? '⏳ بالدور' : r.step === 'download' ? (r.cores ? `${r.cores[0]} من ${r.cores[1]}` : `⬇ ${r.pct || 0}%` + (r.total ? ` • ${emb(r.got || 0)} من ${emb(r.total)} MB` : r.got ? ` • ${emb(r.got)} MB` : '')) : r.step === 'extract' ? '📦 فك الضغط' : r.step === 'done' ? '✓ جاهز' : '✗ ما نزل';
   // the big line on top: how far along all of it is, and roughly how long is left
   const emus = rows.filter((r) => r.id !== 'cores');
   const n = emuPlan?.n || emus.length;
@@ -1301,7 +1307,7 @@ pv.onEmuProgress((m) => {
   const secs = emuPlan && frac > 0.02 ? ((Date.now() - emuPlan.t0) / 1000) * (1 - frac) / frac : 0;
   const cores = rows.find((r) => r.id === 'cores');
   let head, sub;
-  if (n && fin < n) { head = `أجهّز المحاكيات… ${Math.min(n, fin + 1)} من ${n}`; sub = (secs ? `باقي تقريباً ${emins(secs)}` : 'أحسب الوقت الباقي…') + (cur?.speed ? ` · ${emb(cur.speed)} MB/ث` : ''); }
+  if (n && fin < n) { head = `أجهّز المحاكيات… ${Math.min(n, fin + 1)} من ${n}`; sub = (secs ? `باقي تقريباً ${emins(secs)}` : 'أحسب الوقت الباقي…') + (cur?.speed ? ` • ${emb(cur.speed)} MB/ث` : ''); }
   else if (cores && cores.step !== 'done') { head = 'آخر خطوة: أجهّز أجهزة RetroArch'; sub = `${cores.cores?.[0] || 0} من ${cores.cores?.[1] || '…'}`; }
   else { head = '✓ كل شي جاهز'; sub = 'تقدر تلعب الحين'; }
   const all = cores && cores.step !== 'done' && (!n || fin >= n) ? (cores.pct || 0) : Math.round(frac * 100);
@@ -1315,7 +1321,7 @@ pv.onEmuProgress((m) => {
   let chip = $('#emuChip');
   if (emuProg.dataset.gone && !head.startsWith('✓')) {
     if (!chip) { chip = document.createElement('button'); chip.id = 'emuChip'; chip.onclick = () => { delete emuProg.dataset.gone; emuProg.hidden = false; chip.remove(); }; document.body.appendChild(chip); }
-    chip.textContent = `⬇ ${all}%`; chip.title = head + ' · ' + sub;
+    chip.textContent = `⬇ ${all}%`; chip.title = head + ' • ' + sub;
   } else chip?.remove();
   // the very first setup finished: restart once so everything that came down is picked up cleanly
   if (head.startsWith('✓') && !data.emuSetupRestarted && emuPlan?.n) {
@@ -1389,7 +1395,7 @@ async function discoverEmus(auto = false) {
     return;
   }
   box.innerHTML = `<h3>لقيت في جهازك</h3>` + [...pairs, ...lonely].map((f, n) => `
-    <div class="emu-row"><div><b>${esc(PLATFORMS[f.platform]?.label || f.platform)}</b> <small dir="ltr">${esc(f.dir)}</small><small>${f.count} لعبة${f.exe ? '' : ' · محتاج تختار المحاكي'}</small></div>
+    <div class="emu-row"><div><b>${esc(PLATFORMS[f.platform]?.label || f.platform)}</b> <small dir="ltr">${esc(f.dir)}</small><small>${f.count} لعبة${f.exe ? '' : ' • محتاج تختار المحاكي'}</small></div>
       <div class="emu-actions"><button type="button" class="btn ${f.exe ? 'primary' : 'ghost'}" data-found="${n}">${f.exe ? 'إضافة' : 'اختيار المحاكي…'}</button></div></div>`).join('');
   const all = [...pairs, ...lonely];
   box.querySelectorAll('[data-found]').forEach((b) => b.onclick = async () => {
@@ -1661,14 +1667,14 @@ function drawCatChips() {
 }
 
 // ---------- Downloads from the in-app browser ----------
-const mb = (b) => (b / 1048576).toFixed(b > 1073741824 ? 0 : 1) + ' MB';
+const mb = (b) => ltr((b / 1048576).toFixed(b > 1073741824 ? 0 : 1) + ' MB');
 pv.onDownload((m) => {
   if (m.state === 'fast') { toast(`⚡ ${m.name}: يتحمّل بالتحميل السريع (تحت يسار)`); $('#dlBox') && ($('#dlBox').hidden = true); return; }
   let box = $('#dlBox');
   if (!box) { box = document.createElement('div'); box.id = 'dlBox'; document.body.appendChild(box); }
   box.hidden = false;
   const pct = m.total ? Math.round((m.got || 0) / m.total * 100) : 0;
-  box.innerHTML = `<b>⬇ ${esc(m.name)}</b><small>${m.state === 'done' ? '✓ نزل في التنزيلات' : m.state === 'fail' ? '✗ ما كمل التحميل' : m.total ? `${pct}% · ${mb(m.got || 0)} من ${mb(m.total)}` : 'بدأ التحميل…'}</small><i style="--p:${m.state === 'done' ? 100 : pct}%"></i>`;
+  box.innerHTML = `<b>⬇ ${esc(m.name)}</b><small>${m.state === 'done' ? '✓ نزل في التنزيلات' : m.state === 'fail' ? '✗ ما كمل التحميل' : m.total ? `${pct}% • ${mb(m.got || 0)} من ${mb(m.total)}` : 'بدأ التحميل…'}</small><i style="--p:${m.state === 'done' ? 100 : pct}%"></i>`;
   if (m.state === 'done' && /\.torrent$/i.test(m.name) && m.file) pv.torAdd(m.file).then((r) => r.ok && toast('🧲 بدأ تحميل التورنت'));
   if (m.state === 'done' || m.state === 'fail') { toast(m.state === 'done' ? `✓ نزل ${m.name}` : `ما كمل تحميل ${m.name}`); clearTimeout(box._t); box._t = setTimeout(() => { box.hidden = true; }, 5000); }
 });
@@ -1688,7 +1694,7 @@ function openTorrentAdd() {
   f.onsubmit = async (e) => { e.preventDefault(); const m = f.m.value.trim(); if (!/^magnet:/i.test(m)) return toast('الصق رابط يبدأ بـ magnet:'); const r = await pv.torAdd(m); toast(r.ok ? '🧲 بدأ التحميل' : `ما قدرت: ${r.error}`); if (r.ok) d.close(); };
   d.addEventListener('close', () => d.remove());
 }
-const human = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : (b / 1048576).toFixed(b > 104857600 ? 0 : 1) + ' MB';
+const human = (b) => ltr(b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : (b / 1048576).toFixed(b > 104857600 ? 0 : 1) + ' MB');
 const fmtLeft = (sec) => sec < 60 ? 'أقل من دقيقة' : sec < 3600 ? `${Math.ceil(sec / 60)} د` : `${Math.floor(sec / 3600)} س ${Math.round((sec % 3600) / 60)} د`;
 pv.onTorrent((m) => {
   if (m.status === 'done') { toast(`✅ خلص تحميل ${m.name}`); return; }
@@ -1708,7 +1714,7 @@ pv.onTorrent((m) => {
   box.dataset.peek = cur && cur.total ? `⬇ ${Math.floor((cur.done / cur.total) * 100)}%` : live.length ? '⬇' : '✓';
   box.innerHTML = `<div class="tb-head"><b>⬇ التحميلات</b><button class="btn ghost sm" data-dir>📂</button><button class="btn ghost sm" data-hide>✕</button></div>` + items.slice(0, 6).map((x) => {
     const pct = x.total ? Math.floor((x.done / x.total) * 100) : 0;
-    const st = x.status === 'active' && !x.done && !x.peers ? '🔎 يدوّر على مصادر<span class="dots"><i>.</i><i>.</i><i>.</i></span>' : x.status === 'waiting' ? `⏳ بالانتظار، يبدأ بعد اللي قبله` : x.status === 'complete' ? '✓ خلص التحميل (📂 يفتح المجلد)' : x.status === 'error' ? `✗ ${x.error || 'وقف'}` : x.status === 'paused' ? '⏸ موقف' : !x.total ? 'يدوّر على الملف…' : `${pct}% · ${human(x.done)} من ${human(x.total)} · ${human(x.speed)}/ث${x.speed > 0 ? ` · باقي ${fmtLeft((x.total - x.done) / x.speed)}` : ''} · ${x.peers} مصدر`;
+    const st = x.status === 'active' && !x.done && !x.peers ? '🔎 يدوّر على مصادر<span class="dots"><i>.</i><i>.</i><i>.</i></span>' : x.status === 'waiting' ? `⏳ بالانتظار، يبدأ بعد اللي قبله` : x.status === 'complete' ? '✓ خلص التحميل (📂 يفتح المجلد)' : x.status === 'error' ? `✗ ${x.error || 'وقف'}` : x.status === 'paused' ? '⏸ موقف' : !x.total ? 'يدوّر على الملف…' : `${pct}% • ${human(x.done)} من ${human(x.total)} • ${human(x.speed)}/ث${x.speed > 0 ? ` • باقي ${fmtLeft((x.total - x.done) / x.speed)}` : ''} • ${x.peers} مصدر`;
     return `<div class="tb-row ${x.status}"><span class="tb-name" dir="auto">${esc(x.name)}</span><small>${st}</small>
       ${['active', 'waiting', 'paused'].includes(x.status) ? `<span class="tb-acts"><button data-g="${x.gid}" data-a="${x.status === 'paused' ? 'resume' : 'pause'}">${x.status === 'paused' ? '▶' : '⏸'}</button><button data-g="${x.gid}" data-a="remove">✕</button></span>` : ''}
       <i style="--p:${x.status === 'complete' ? 100 : pct}%"></i></div>`;
@@ -2003,7 +2009,7 @@ function drawSelection() {
   let bar = $('#selBar');
   if (!selection.size) { bar?.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'selBar'; document.body.appendChild(bar); }
-  bar.innerHTML = `<b>${selection.size} محدد</b><button class="btn ghost sm" data-s="move">نقل إلى…</button><button class="btn ghost sm" data-s="del">حذف</button><button class="btn ghost sm" data-s="clear">إلغاء</button><small>Shift للمدى · Ctrl للواحد</small>`;
+  bar.innerHTML = `<b>${selection.size} محدد</b><button class="btn ghost sm" data-s="move">نقل إلى…</button><button class="btn ghost sm" data-s="del">حذف</button><button class="btn ghost sm" data-s="clear">إلغاء</button><small>Shift للمدى • Ctrl للواحد</small>`;
   bar.querySelector('[data-s=move]').onclick = (e) => { const first = page()?.items.find((i) => selection.has(i.id)); if (first) moveItemMenu(e, first); };
   bar.querySelector('[data-s=del]').onclick = () => { const list = page().items.filter((i) => selection.has(i.id)); if (confirm(`حذف ${list.length} عناصر؟`)) { deleteItems(list); selection.clear(); renderPage(); drawSelection(); } };
   bar.querySelector('[data-s=clear]').onclick = () => { selection.clear(); drawSelection(); };
@@ -2084,6 +2090,8 @@ function openThemePicker() {
     };
   });
   $('#themePicker').showModal();
+  // the dialog focuses its first card, which looked picked too: focus (and show) the theme you're on instead
+  const cur = $('#themeGrid .theme-card.on'); if (cur) { cur.focus({ preventScroll: true }); cur.scrollIntoView({ block: 'center' }); }
 }
 $('#themeBtn').onclick = (e) => { e.stopPropagation(); openThemePicker(); };
 $('#themeClose').onclick = () => $('#themePicker').close();
@@ -2490,7 +2498,7 @@ async function deviceScan(fresh) {
     data.settings.deviceTuned = Date.now();
     save(); applyPlugins();
     const wl = (d.wireless || []).map((w) => KIND_ICON[w.kind] + ' ' + w.name);
-    toast(`🖥 عرفت جهازك: ${d.ramGB || '?'}GB رام${gpu ? ' · ' + gpu : ''}${wl.length ? ' · ' + wl.length + ' جهاز لاسلكي' : ''}${did.length ? ' — ضبطته: ' + did.join('، ') : ''}`, 9000);
+    toast(`🖥 عرفت جهازك: ${d.ramGB || '?'}GB رام${gpu ? ' • ' + gpu : ''}${wl.length ? ' • ' + wl.length + ' جهاز لاسلكي' : ''}${did.length ? ' — ضبطته: ' + did.join('، ') : ''}`, 9000);
     pv.log(`device tuned: ${did.join(', ') || 'nothing to change'}; wireless: ${wl.join(', ') || 'none'}; mics ${mics}`);
   }
   drawDevice();
@@ -2501,7 +2509,7 @@ function padBrand(id) { return /054c|playstation|dualsense|dualshock|wireless co
 function padSeen() {
   const p = [...(navigator.getGamepads?.() || [])].filter(Boolean);
   const name = { sony: 'بلايستيشن', xbox: 'إكس بوكس', nintendo: 'نينتندو', other: 'يد عامة' };
-  if (p.length) return p.map((x) => `${name[padBrand(x.id)]} — ${x.id.replace(/\(.*?\)/g, '').trim()}`).join(' · ');
+  if (p.length) return p.map((x) => `${name[padBrand(x.id)]} — ${x.id.replace(/\(.*?\)/g, '').trim()}`).join(' • ');
   return data.settings.padBrand ? `${name[data.settings.padBrand]} (آخر مرة)` : 'حرّك اليد عشان أعرفها';
 }
 window.addEventListener('gamepadconnected', (e) => {
@@ -2519,10 +2527,10 @@ function drawDevice() {
       <span>المعالج</span><b dir="auto">${esc(d.cpu || '—')}${d.cores ? ` (${d.cores})` : ''}</b>
       <span>الرام</span><b>${d.ramGB || '—'} GB</b>
       <span>كرت الشاشة</span><b dir="auto">${esc((d.gpus || []).map((g) => g.name).join(' + ') || '—')}</b>
-      <span>النوع</span><b>${d.laptop ? 'لابتوب' : 'كمبيوتر مكتبي'} · ${d.wifi ? 'واي فاي ✓' : 'بدون واي فاي'} · ${d.bluetooth ? 'بلوتوث ✓' : 'بدون بلوتوث'}</b>
+      <span>النوع</span><b>${d.laptop ? 'لابتوب' : 'كمبيوتر مكتبي'} • ${d.wifi ? 'واي فاي ✓' : 'بدون واي فاي'} • ${d.bluetooth ? 'بلوتوث ✓' : 'بدون بلوتوث'}</b>
       <span>اللاسلكي</span><b dir="auto">${(d.wireless || []).map((w) => `<i class="dev-w">${KIND_ICON[w.kind] || '📶'} ${esc(w.name)}</i>`).join('') || 'ما لقيت شي متصل'}</b>
-      <span>الكيبورد</span><b dir="auto">${esc((d.keyboards || []).join(' · ') || 'كيبورد عادي')}</b>
-      <span>الماوس</span><b dir="auto">${esc((d.mice || []).join(' · ') || 'ماوس عادي')}</b>
+      <span>الكيبورد</span><b dir="auto">${esc((d.keyboards || []).join(' • ') || 'كيبورد عادي')}</b>
+      <span>الماوس</span><b dir="auto">${esc((d.mice || []).join(' • ') || 'ماوس عادي')}</b>
       <span>يد التحكم</span><b dir="auto">${esc(padSeen())}</b>
     </div>`;
   box.querySelector('#advScan').onclick = async (e) => {
@@ -3047,7 +3055,7 @@ async function pushRemote() {
     ...allItems().filter((i) => isGameItem(i) && i.owned).slice(0, 300).map((i) => ({ id: i.id, name: i.name, img: pic(i), owned: true })),
   ];
   const w = page('watch');
-  const watch = (w?.items || []).map((i) => ({ id: i.id, name: i.name, img: pic(i), url: isWeb(i.lastUrl || i.target) ? (i.lastUrl || i.target) : '', note: i.lastNote || '', time: i.lastTime || 0 }));
+  const watch = (w?.items || []).map((i) => ({ id: i.id, name: i.name, img: pic(i), url: isWeb(i.lastUrl || i.target) ? (i.lastUrl || i.target) : '', note: i.lastNote || '', time: i.lastTime || 0, fav: !!i.fav }));
   if (window.Series && Date.now() - remoteShowsAt > 10 * 60000 && w?.folders?.length && !window.SB_PAUSED?.()) { remoteShowsAt = Date.now(); try { remoteShows = await Series.scanAll(); } catch { remoteShows = []; } }
   const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
   const torrents = (data.torLib || []).filter((t) => t.state && t.state !== 'saved').slice(0, 20).map((t) => ({ title: t.title, state: t.state, pct: t.pct }));
@@ -3057,6 +3065,7 @@ async function pushRemote() {
 }
 setInterval(() => { if (!window.SB_PAUSED?.()) pushRemote(); }, 15000); setTimeout(pushRemote, 4000);
 pv.onRemote((c) => {
+  if (c.type === 'fav') { const f = findItem(c.id); if (f) { f.item.fav = !!c.on; save(); if (page()?.id === f.page.id) renderPage(); pushRemote(); } return; }
   if (c.type === 'launch') { const f = findItem(c.id); pv.log('phone: open ' + (f ? f.item.name : 'missing ' + c.id)); if (f) { launchItem(f.item); toast(`📱 ${f.item.name} من الجوال`); } }
   else if (c.type === 'torDl') { const t = (data.torLib || []).find((x) => x.id === c.id); if (t && t.state === 'saved') pv.torAdd(t.file, { quiet: true }).then((r) => { if (r.ok) { t.state = 'downloading'; t.pct = 0; save(); toast(`📱 ⬇ بدأ تحميل ${t.title}`); if (currentPageId === 'games' && gamesTab === 'tor') renderPage(); } else toast('ما قدرت: ' + r.error); }); }
   else if (c.type === 'showPlay') { window.Series?.playFile(c.dir, c.file); toast('📱 من الجوال'); }
@@ -3145,13 +3154,13 @@ function renderMods(p) {
     <div class="mods-drop" id="modsDrop">
       <div class="md-ic">🧩</div>
       <h2>اسحب ملف المود أو التعريب هنا</h2>
-      <p>zip · rar · 7z · مجلد · pnach · أو تحديث سويتش (nsp)</p>
+      <p>zip • rar • 7z • مجلد • pnach • أو تحديث سويتش (nsp)</p>
       <button class="btn primary" id="modsPick">أو اختر الملف…</button>
     </div>
     <div class="mods-how"><div><b>١</b> اسحب الملف</div><div><b>٢</b> اختر اللعبة</div><div><b>٣</b> أركّبه في المكان الصح لحالي</div></div>
     <p class="hint">يعرف وين يحطه: سويتش (Ryujinx و Lichii)، Wii U (Cemu)، GameCube/Wii (Dolphin)، PS2 (PCSX2)، PSP، وألعاب الكمبيوتر (ينسخه لمجلد اللعبة مع نسخة احتياطية). تقدر بعد تسحب المود على صفحة اللعبة نفسها.</p>
     <h3 class="md-h">اللي ركّبته</h3>
-    <div class="md-list">${log.length ? log.slice(0, 40).map((m) => `<div class="md-row"><span>${m.ok ? '✓' : '✗'}</span><b dir="auto">${esc(m.mod)}</b><small>على ${esc(m.game)} · ${when(m.t)}</small><em>${esc(m.msg || '')}</em></div>`).join('') : '<div class="empty small">لسا ما ركّبت شي.</div>'}</div>
+    <div class="md-list">${log.length ? log.slice(0, 40).map((m) => `<div class="md-row"><span>${m.ok ? '✓' : '✗'}</span><b dir="auto">${esc(m.mod)}</b><small>على ${esc(m.game)} • ${when(m.t)}</small><em>${esc(m.msg || '')}</em></div>`).join('') : '<div class="empty small">لسا ما ركّبت شي.</div>'}</div>
     <div class="md-foot"><button class="btn ghost sm" id="modsFolder">📂 مجلد المودات</button></div>`;
   $('#modsPick').onclick = async () => { const f = await pv.pickFile('file'); if (f) modsDrop([f]); };
   $('#modsFolder').onclick = () => paths.mods && pv.launch(paths.mods);

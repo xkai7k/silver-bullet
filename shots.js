@@ -71,7 +71,7 @@
       ? `<video src="${fileUrl(s.f)}" controls autoplay></video>`
       : `<img src="${fileUrl(s.f)}" alt="">`;
     v.querySelector('.v-count').textContent = `${idx + 1} / ${list.length}`;
-    v.querySelector('.v-src').textContent = `${s.src} · ${new Date(s.t).toLocaleDateString('ar-SA-u-ca-gregory', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    v.querySelector('.v-src').textContent = `${s.src} • ${new Date(s.t).toLocaleDateString('ar-SA-u-ca-gregory', { day: 'numeric', month: 'short', year: 'numeric' })}`;
   }
   function open(items, start = 0, name = '') {
     list = items; idx = start; title = name;
@@ -124,7 +124,7 @@
       const l = shots[item.id] || [];
       if (!l.length) { box.innerHTML = `<div class="d-shots-empty">ما فيه لقطات لهذي اللعبة للحين.</div>`; return; }
       const imgs = l.filter((s) => !s.video).length, vids = l.length - imgs;
-      box.innerHTML = `<div class="d-shots-head">📸 لقطاتك <small>${imgs} صورة${vids ? ` · ${vids} مقطع` : ''}</small> <button class="btn ghost sm" data-phone>📲 انقلها للجوال</button></div>
+      box.innerHTML = `<div class="d-shots-head">📸 لقطاتك <small>${imgs} صورة${vids ? ` • ${vids} مقطع` : ''}</small> <button class="btn ghost sm" data-phone>📲 انقلها للجوال</button></div>
         <div class="d-shots-row">${l.slice(0, 14).map(thumb).join('')}${l.length > 14 ? `<button class="shot more" data-i="14">+${l.length - 14}</button>` : ''}</div>`;
       box.querySelectorAll('.shot').forEach((b) => b.onclick = (e) => { e.stopPropagation(); open(l, Number(b.dataset.i), item.name); });
       box.querySelector('[data-phone]').onclick = (e) => { e.stopPropagation(); sendToPhone(groupFor(item), item.name); };
@@ -146,7 +146,8 @@
       };
       const pick = (l) => l.filter((x) => kind === 'all' || (kind === 'vid' ? x.video : !x.video));
       const order = (l) => pick(l).slice().sort((a, b) => sort === 'old' ? a.t - b.t : sort === 'big' ? (b.s || 0) - (a.s || 0) : b.t - a.t);
-      const size = (b) => !b ? '' : b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
+      // kept left-to-right inside Arabic text, or "20.73 GB" shows up as "GB 20.73"
+      const size = (b) => !b ? '' : '\u2066' + (b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB') + '\u2069';
       const when = (t) => new Date(t).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short', year: 'numeric' });
       // groups: [{ name, files }]
       let groups;
@@ -168,19 +169,19 @@
       const all = groups.flatMap((g) => g.files.map((f) => ({ ...f, game: g.name })));
       const totalSize = all.reduce((a, f) => a + (f.s || 0), 0);
       groups.sort((a, b) => sort === 'big' ? b.files.reduce((x, f) => x + (f.s || 0), 0) - a.files.reduce((x, f) => x + (f.s || 0), 0) : sort === 'old' ? a.files[0].t - b.files[0].t : b.files[0].t - a.files[0].t);
-      const head = `<div class="gallery-head"><span>${all.length} ملف · ${size(totalSize)}</span>${tab === 'games' ? '<button class="btn primary" id="phoneAll">📲 انقل الكل للجوال</button>' : ''}</div>`;
+      const head = `<div class="gallery-head"><span>${all.length} ملف • ${size(totalSize)}</span>${tab === 'games' ? '<button class="btn primary" id="phoneAll">📲 انقل الكل للجوال</button>' : ''}</div>`;
 
       if (view === 'list') { // every file in one list, like the Space tab: see the biggest, delete from here
         const flat = order(all);
         const shown = flat.slice(0, 400);
         viewEl.innerHTML = tabs + head + `<div class="gl-bar"><label><input type="checkbox" id="glAll"> حدد الكل</label><span id="glSel"></span><button class="btn danger sm" id="glDel" disabled>🗑 احذف المحدد</button></div>
           <div class="gl-list">${shown.map((f, i) => `<div class="gl-row" data-i="${i}"><input type="checkbox" data-c="${i}"><button class="gl-th" data-o="${i}">${f.video ? `<video src="${fileUrl(f.f)}#t=1" preload="metadata" muted></video><span>▶</span>` : `<img src="${fileUrl(f.f)}" loading="lazy" alt="">`}</button>
-            <span class="gl-name" title="${esc(f.f)}"><b dir="auto">${esc(f.f.split(/[\\/]/).pop())}</b><small>${esc(f.game)} · ${when(f.t)}</small></span><span class="gl-size">${size(f.s)}</span><button class="btn ghost sm" data-del="${i}" title="للسلة">🗑</button></div>`).join('')}</div>
+            <span class="gl-name" title="${esc(f.f)}"><b dir="auto">${esc(f.f.split(/[\\/]/).pop())}</b><small>${esc(f.game)} • ${when(f.t)}</small></span><span class="gl-size">${size(f.s)}</span><button class="btn ghost sm" data-del="${i}" title="للسلة">🗑</button></div>`).join('')}</div>
           ${flat.length > shown.length ? `<p class="hint">يعرض أول ${shown.length} من ${flat.length}.</p>` : ''}`;
         wireTabs();
         viewEl.querySelector('#phoneAll')?.addEventListener('click', () => sendToPhone(allGroups()));
         const sel = new Set();
-        const sync = () => { viewEl.querySelector('#glDel').disabled = !sel.size; viewEl.querySelector('#glSel').textContent = sel.size ? `${sel.size} محدد · ${size([...sel].reduce((a, i) => a + (shown[i].s || 0), 0))}` : ''; };
+        const sync = () => { viewEl.querySelector('#glDel').disabled = !sel.size; viewEl.querySelector('#glSel').textContent = sel.size ? `${sel.size} محدد • ${size([...sel].reduce((a, i) => a + (shown[i].s || 0), 0))}` : ''; };
         viewEl.querySelectorAll('[data-c]').forEach((c) => c.onchange = () => { c.checked ? sel.add(Number(c.dataset.c)) : sel.delete(Number(c.dataset.c)); sync(); });
         viewEl.querySelector('#glAll').onchange = (e) => { viewEl.querySelectorAll('[data-c]').forEach((c) => { c.checked = e.target.checked; c.checked ? sel.add(Number(c.dataset.c)) : sel.delete(Number(c.dataset.c)); }); sync(); };
         viewEl.querySelectorAll('[data-o]').forEach((b) => b.onclick = () => open(shown, Number(b.dataset.o), 'لقطاتك'));
@@ -196,7 +197,7 @@
       }
       viewEl.innerHTML = tabs + head + groups.map((g, n) => {
         const l = g.files;
-        return `<div class="g-row" data-c="${n}"><div class="group-title">${esc(g.name)} <small>${l.length} · ${size(l.reduce((a, f) => a + (f.s || 0), 0))}</small><span class="spacer"></span><button class="btn ghost sm" data-ph="${n}">📲 للجوال</button></div>
+        return `<div class="g-row" data-c="${n}"><div class="group-title">${esc(g.name)} <small>${l.length} • ${size(l.reduce((a, f) => a + (f.s || 0), 0))}</small><span class="spacer"></span><button class="btn ghost sm" data-ph="${n}">📲 للجوال</button></div>
           <div class="d-shots-row big">${l.slice(0, 14).map(thumb).join('')}${l.length > 14 ? `<button class="shot more" data-i="14">+${l.length - 14}</button>` : ''}</div></div>`;
       }).join('');
       wireTabs();

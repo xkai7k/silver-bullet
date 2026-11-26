@@ -146,7 +146,7 @@
     const { g, what } = askQ[0];
     askDlg.innerHTML = `<div class="pa-ic">${what === 'back' ? '⏪' : '⏯'}</div><h2><b>${esc(g.name)}</b> ${WHAT[what].replace(/^\S+\s/, '')}</h2>
       ${askQ.length > 1 ? `<p class="pa-more">+${askQ.length - 1} طلب ثاني</p>` : ''}
-      <div class="pa-btns"><button class="btn primary pa-yes">✓ سوّها</button><button class="btn ghost pa-no">✕ لا</button></div><p class="pa-hint">Enter = سوّها · Esc = لا</p>`;
+      <div class="pa-btns"><button class="btn primary pa-yes">✓ سوّها</button><button class="btn ghost pa-no">✕ لا</button></div><p class="pa-hint">Enter = سوّها • Esc = لا</p>`;
     askDlg.querySelector('.pa-yes').onclick = () => answer(true);
     askDlg.querySelector('.pa-no').onclick = () => answer(false);
     if (!askDlg.open) askDlg.showModal(); // the top layer: above a full-screen webview too

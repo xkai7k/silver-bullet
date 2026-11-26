@@ -83,7 +83,7 @@
     const draw = (info) => {
       if (detItem !== item) return;
       const a = det.querySelector('#dAbout'), t = det.querySelector('#dTrophies');
-      if (a) a.innerHTML = info.desc ? `${esc(info.desc)}${info.genres?.length ? `<span class="d-tags">${info.genres.map((g) => `<i>${esc(g)}</i>`).join('')}${info.dev ? `<i>${esc(info.dev)}${info.year ? ' · ' + esc(info.year) : ''}</i>` : ''}</span>` : ''}` : '';
+      if (a) a.innerHTML = info.desc ? `${esc(info.desc)}${info.genres?.length ? `<span class="d-tags">${info.genres.map((g) => `<i>${esc(g)}</i>`).join('')}${info.dev ? `<i>${esc(info.dev)}${info.year ? ' • ' + esc(info.year) : ''}</i>` : ''}</span>` : ''}` : '';
       if (t) t.innerHTML = info.trophies?.length ? `<h3>🏆 أصعب إنجازاتك <small>${esc(info.trophyCount || '')}</small></h3><div class="tro-row">${info.trophies.map((x) => `
           <div class="tro" title="${esc(x.desc)}"><img src="${esc(x.icon)}" alt=""><b>${esc(x.name)}</b><small>${x.pct !== null ? `${x.pct.toFixed(1)}% من اللاعبين` : ''}</small></div>`).join('')}</div>`
         : info.trophyNote ? `<p class="hint">🏆 ${esc(info.trophyNote)}</p>` : '';

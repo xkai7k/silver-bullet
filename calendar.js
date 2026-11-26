@@ -138,9 +138,9 @@
           <div class="cd-list">
             ${upcoming.length ? upcoming.map(({ e, at }) => `
               <div class="cd" data-ev="${e.id}" style="--c:${e.color || COLORS[0]}">
-                <div class="cd-top"><b>${esc(e.title)}</b><small>${esc(gFullAr.format(at))}${e.time ? ' · ' + esc(e.time) : ''}</small></div>
+                <div class="cd-top"><b>${esc(e.title)}</b><small>${esc(gFullAr.format(at))}${e.time ? ' • ' + esc(e.time) : ''}</small></div>
                 <div class="cd-time" data-at="${+at}"></div>
-                <small class="cd-meta">${esc(hFullAr.format(at))}${e.remind && e.remind !== 'none' ? ' · 🔔 ' + REMIND[e.remind] : ''}${e.repeat && e.repeat !== 'none' ? ' · 🔁' : ''}</small>
+                <small class="cd-meta">${esc(hFullAr.format(at))}${e.remind && e.remind !== 'none' ? ' • 🔔 ' + REMIND[e.remind] : ''}${e.repeat && e.repeat !== 'none' ? ' • 🔁' : ''}</small>
               </div>`).join('') : '<div class="empty small">ما فيه مواعيد. اضغط على أي يوم أو "+ موعد" وأضف شي تنتظره.</div>'}
           </div>
         </aside>
@@ -284,7 +284,7 @@
   window.Calendar = { render: draw, add: (day) => openEvent(null, day),
     // the next few events with their time left (for the little countdown under the calendar card on the home screen)
     upcoming: (n = 3) => events().map((e) => ({ e, at: nextOccur(e) })).filter((x) => x.at && x.at > Date.now()).sort((a, b) => a.at - b.at).slice(0, n)
-      .map(({ e, at }) => ({ title: e.title, color: e.color, at, left: ((f) => f.big || f.parts.filter(([n], i) => n || i >= 2).map(([n, w]) => `${n} ${w}`).join(' · '))(fmtLeft(at - Date.now())) })) };
+      .map(({ e, at }) => ({ title: e.title, color: e.color, at, left: ((f) => f.big || f.parts.filter(([n], i) => n || i >= 2).map(([n, w]) => `${n} ${w}`).join(' • '))(fmtLeft(at - Date.now())) })) };
   setTimeout(checkReminders, 8000);
   setInterval(checkReminders, 60000);
 })();

@@ -50,13 +50,13 @@
         const v = inp.value.trim(); if (!v) { inp.focus(); return; }
         data.user = { ...(data.user || {}), name: v }; save();
         wel.querySelector('.wl-ask').hidden = true;
-        const h = wel.querySelector('.wl-hello'); h.textContent = `أهلاً ${v} 👋`; h.classList.add('in');
+        const h = wel.querySelector('.wl-hello'); h.textContent = (data.settings?.lang === 'en' ? 'Hi ' : 'أهلاً ') + v + ' 👋'; h.classList.add('in');
         if (!currentPageId) $('#title').textContent = greeting();
         setTimeout(enter, 1300);
       };
     } else {
       const h = wel.querySelector('.wl-hello');
-      h.textContent = `أهلاً ${name}`; h.classList.add('in');
+      h.textContent = (data.settings?.lang === 'en' ? 'Hi ' : 'أهلاً ') + name; h.classList.add('in');
       setTimeout(enter, Math.max(1500, 3000 - (performance.now() - shownAt))); // the whole intro plays, then straight in
     }
   }
@@ -200,7 +200,7 @@
     const cov = (i) => `<div class="tl-item" draggable="true" data-tl="${i.id}" title="${esc(i.name)}">${coverHtml(i)}</div>`;
     view.innerHTML = `
       <div class="chips"><button class="chip ${tab === 'tiers' ? 'on' : ''}" data-t="tiers">🏆 قائمة المستويات</button><button class="chip ${tab === 'rate' ? 'on' : ''}" data-t="rate">★ قيّم ألعابك</button>
-        ${tab === 'tiers' ? `<span class="spacer"></span>${(data.tierHidden || []).length ? `<button class="btn ghost sm" id="tlUnhide">↩ رجّع المشالة (${data.tierHidden.length})</button>` : ''}<button class="btn ghost sm" id="tlShare">📤 شارك / احفظ الصورة</button><button class="btn ghost sm" id="tlReset">↺ فضّها</button>` : ''}</div>
+        ${tab === 'tiers' ? `<span class="spacer"></span>${(data.tierHidden || []).length ? `<button class="btn ghost sm" id="tlUnhide">↩ رجّع اللي شلتها (${data.tierHidden.length})</button>` : ''}<button class="btn ghost sm" id="tlShare">📤 شارك / احفظ الصورة</button><button class="btn ghost sm" id="tlReset">↺ فضّها</button>` : ''}</div>
       ${tab === 'tiers' ? `
         <div class="tierlist" id="tierlist">
           ${TIERS.map(([t, c]) => `<div class="tl-row"><div class="tl-tag" style="background:${c}">${t}</div><div class="tl-drop" data-tier="${t}">${(data.tiers[t] || []).map((id) => findItem(id)?.item).filter(Boolean).map(cov).join('')}</div></div>`).join('')}

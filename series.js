@@ -50,7 +50,7 @@
         <div class="sd-head"><h2>📱 ${esc(sh.name)} للجوال</h2><span class="spacer"></span>
           <button class="btn primary" data-go ${pick.size ? '' : 'disabled'}>جهّز الباركود (${pick.size})</button><button class="btn ghost" data-back>رجوع</button></div>
         <p class="hint" style="margin:4px 0 10px">اختر الحلقات، امسح الباركود بالجوال أو الآيباد ونزّلها. بعدها تتابعها في أي مكان بدون الكمبيوتر.</p>
-        <div class="ep-list">${sh.episodes.map((e, i) => `<button class="ep ${pick.has(e.file) ? 'cur' : ''}" data-pk="${i}"><span class="ep-n">${pick.has(e.file) ? '✓' : i + 1}</span><span class="ep-t">${esc(epCode(e.name) ? epCode(e.name) + ' · ' : '')}${esc(cleanEp(e.name))}</span></button>`).join('')}</div>`;
+        <div class="ep-list">${sh.episodes.map((e, i) => `<button class="ep ${pick.has(e.file) ? 'cur' : ''}" data-pk="${i}"><span class="ep-n">${pick.has(e.file) ? '✓' : i + 1}</span><span class="ep-t">${esc(epCode(e.name) ? epCode(e.name) + ' • ' : '')}${esc(cleanEp(e.name))}</span></button>`).join('')}</div>`;
       dlg.querySelector('[data-back]').onclick = () => openShow(sh);
       dlg.querySelectorAll('[data-pk]').forEach((b) => b.onclick = () => { const f = sh.episodes[Number(b.dataset.pk)].file; pick.has(f) ? pick.delete(f) : pick.add(f); draw(); });
       dlg.querySelector('[data-go]').onclick = go;
@@ -90,7 +90,7 @@
         <button class="btn ghost" data-x>إغلاق</button></div>
       <div class="ep-list">${sh.episodes.map((e, i) => {
         const pr = prog()[e.file]; const pct = pr && pr.d ? Math.min(100, Math.round((pr.t / pr.d) * 100)) : 0;
-        return `<button class="ep ${pct > 90 ? 'seen' : ''} ${e.file === last ? 'cur' : ''}" data-ep="${i}"><span class="ep-n">${i + 1}</span><span class="ep-t">${esc(epCode(e.name) ? epCode(e.name) + ' · ' : '')}${esc(cleanEp(e.name))}</span>
+        return `<button class="ep ${pct > 90 ? 'seen' : ''} ${e.file === last ? 'cur' : ''}" data-ep="${i}"><span class="ep-n">${i + 1}</span><span class="ep-t">${esc(epCode(e.name) ? epCode(e.name) + ' • ' : '')}${esc(cleanEp(e.name))}</span>
           <span class="ep-p">${pct > 90 ? '✓' : pr?.t ? fmt(pr.t) : ''}</span><i style="--p:${pct}%"></i></button>`;
       }).join('')}</div>`;
     dlg.querySelector('[data-x]').onclick = () => dlg.close();
@@ -115,7 +115,7 @@
     curShow = sh; cur = ep;
     window.Music?.pauseForApp();
     pl.hidden = false; document.body.classList.add('playing-video');
-    pl.querySelector('.pl-title').textContent = `${sh.movie ? '' : sh.name + ' · '}${cleanEp(ep.name)}`;
+    pl.querySelector('.pl-title').textContent = `${sh.movie ? '' : sh.name + ' • '}${cleanEp(ep.name)}`;
     pl.querySelector('.pl-next').hidden = true;
     video.src = toImageUrl(ep.file);
     const pr = prog()[ep.file];

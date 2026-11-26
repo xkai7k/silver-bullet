@@ -2166,3 +2166,6 @@ dialog { --muted: color-mix(in srgb, var(--panel-text) 74%, transparent); }
 #showDlg .ep-n { color: var(--panel-text); opacity: .7; }
 #showDlg .ep.seen { opacity: .78; }
 #showDlg .ep.seen .ep-p { color: #4ade80; font-weight: 800; }
+
+/* watch page: hint under an empty favourites row */
+#view .fav-hint { opacity: .75; font-size: 14px; margin: 2px 6px 16px; line-height: 1.6; }

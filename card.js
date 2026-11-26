@@ -53,7 +53,7 @@
     ctx.fillText(item.name, sx, by + bh + 100);
     const mins = playMinutes(item);
     ctx.font = `500 30px ${font}`; ctx.fillStyle = 'rgba(255,255,255,.65)';
-    ctx.fillText([item.platformLabel, mins ? `لعبت ${fmtTime(mins)}` : ''].filter(Boolean).join('  ·  ') || 'تقييمي', sx, by + bh + 148);
+    ctx.fillText([item.platformLabel, mins ? `لعبت ${fmtTime(mins)}` : ''].filter(Boolean).join('  •  ') || 'تقييمي', sx, by + bh + 148);
 
     // Big number in a ring
     const rx = 190, ry = by + bh + 110, rr = 92;
