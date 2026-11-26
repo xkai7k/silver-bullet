@@ -83,7 +83,6 @@ contextBridge.exposeInMainWorld('api', {
   remoteCall: (kind, body) => ipcRenderer.invoke('remote:call', kind, body),
   remoteState: (s) => ipcRenderer.send('remote:state', s),
   onRemote: (cb) => ipcRenderer.on('remote:cmd', (_e, c) => cb(c)),
-  onAway: (cb) => ipcRenderer.on('away', (_e, v) => cb(v)),
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateRestart: () => ipcRenderer.invoke('update:restart'),
   onUpdate: (cb) => ipcRenderer.on('update:ready', () => cb()),

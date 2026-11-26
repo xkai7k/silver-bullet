@@ -891,13 +891,13 @@ function renderDrawer() {
   const nav = $('#drawerNav');
   const quick = [
     ['home', '🏠', 'الرئيسية'], ['ratings', '⭐', 'التقييم'], ['theme', '🎨', 'الثيمات'], ['settings', '⚙️', 'الإعدادات'],
-    ['pad', '🎮', 'اليد والأجهزة'], ['emu', '🕹️', 'المحاكيات'], ['voice', '🎙', 'كلّم أكاي'], ['help', '؟', 'التعليمات'],
+    ['pad', '🎮', 'اليد والأجهزة'], ['emu', '🕹️', 'المحاكيات'], ['help', '؟', 'التعليمات'],
     ['downloads', '⬇', 'التحميلات'], ['logs', '📜', 'السجلات'], ['stores', '🛒', 'المتاجر'], ['features', '✨', 'المزايا'],
   ];
-  // only what isn't already on the screen: the top bar (rating, help), the dock (Akai, themes) and the home page cards (games, emulators…)
+  // only what isn't already on the screen: the top bar (rating, help), the dock (themes) and the home page cards (games, emulators…)
   const shown = (id) => { const el = document.getElementById(id); return !!el && !el.hidden && el.offsetParent !== null; };
   const onHome = new Set(data.pages.map((p) => p.type || p.id));
-  const dupe = { home: !currentPageId, ratings: shown('rateBtn'), help: shown('helpBtn'), theme: shown('themeBtn'), voice: shown('micBtn'), emu: onHome.has('emu') || !!page('emu') };
+  const dupe = { home: !currentPageId, ratings: shown('rateBtn'), help: shown('helpBtn'), theme: shown('themeBtn'), emu: onHome.has('emu') || !!page('emu') };
   quick.splice(0, quick.length, ...quick.filter(([k]) => !dupe[k]));
   nav.innerHTML = `
     <div class="dr-quick">${quick.map(([k, i, t]) => `<button data-nav="${k}" class="dq ${k === 'home' && !currentPageId ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</div>
@@ -923,7 +923,6 @@ function renderDrawer() {
       else if (v === 'plugins') openSettings('plugins');
       else if (v === 'gamesdir') pv.romsFolder('games');
       else if (v === 'theme') openThemePicker();
-      else if (v === 'voice') window.Voice?.start();
       else if (v === 'settings') openSettings();
       else if (v === 'pad') window.openPadCenter?.();
       else if (v === 'ratings') window.SB?.openRatings('tiers');
@@ -1872,7 +1871,6 @@ function riskDialog(title, why) {
     d.querySelector('[data-no]').onclick = () => d.close('no');
     yes.onclick = () => d.close('yes');
     d.onclose = () => { d.remove(); res(d.returnValue === 'yes'); };
-    window.Akai?.say?.('انتبه! هذا الملف شكله مو سليم 😬', 'shy');
   });
 }
 async function safeFile(p) {
@@ -2083,7 +2081,6 @@ function setTheme(id) {
   document.body.dataset.theme = id;
   setTimeout(applyEmoji, 0);
   window.applyScene?.(id);
-  window.Akai?.dress?.(); // his outfit (and the little one on the dock) changes with the theme right away
   save();
   window.Music?.themeChanged();
   window.Pad?.syncLight();
@@ -2343,21 +2340,17 @@ function openSettings(tab = 'general') {
   if (tab === 'phone') drawRemote();
   if (tab === 'keys') keysStatus();
   if (tab === 'plugins') drawPlugins();
-  if (tab === 'advanced') { pv.drivesList?.().then((ds) => { const sel = $('#advDrive'); if (!sel || !ds) return; sel.innerHTML = '<option value="">اسألني كل مرة</option>' + ds.map((x) => `<option value="${esc(x.root)}">${esc(x.root)} — فاضي ${(x.free / 1073741824).toFixed(0)} GB</option>`).join(''); sel.value = data.settings.installDrive || ''; }); drawDevice(); $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDingVol').value = Math.round((data.settings.dingVol ?? 1) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
-  $('#setAkaiName').value = data.settings.akaiName || '';
+  if (tab === 'advanced') { pv.drivesList?.().then((ds) => { const sel = $('#advDrive'); if (!sel || !ds) return; sel.innerHTML = '<option value="">اسألني كل مرة</option>' + ds.map((x) => `<option value="${esc(x.root)}">${esc(x.root)} — فاضي ${(x.free / 1073741824).toFixed(0)} GB</option>`).join(''); sel.value = data.settings.installDrive || ''; }); drawDevice(); $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
   $('#setLang').value = data.settings.lang || 'ar';
   if (tab === 'moods') window.renderMoodSettings?.($('#setMoods'));
   if (tab === 'controls') window.renderControlSettings?.($('#setControls'));
-  $('#setVoiceModel').value = data.settings.voiceModel || 'base';
   $('#setArtStrong').checked = !!data.settings.artStrong;
   $('#setEmoji').checked = !!data.settings.phoneEmoji;
-  $('#setWakeOn').checked = !!data.settings.wakeOn;
   $('#setName').value = data.user?.name || '';
   $('#setBright').value = Math.round((data.settings.brightness ?? 1) * 100);
   $('#setAfk').checked = data.settings.afk !== false;
   $('#settings').showModal();
 }
-$('#setVoiceModel').onchange = () => { data.settings.voiceModel = $('#setVoiceModel').value; data.settings.voiceChosen = true; save(); window.Voice?.reset(); window.Voice?.preload(); };
 $('#settingsClose').onclick = () => $('#settings').close();
 $('#setAutostart').onchange = async () => { data.settings.autostart = $('#setAutostart').checked; save(); const on = await pv.autostart(data.settings.autostart); autostartSaid(on, true); };
 function autostartSaid(on, loud) {
@@ -2384,15 +2377,6 @@ setTimeout(applyEmoji, 300);
 $('#advDrive') && ($('#advDrive').onchange = () => { const v = $('#advDrive').value; if (v) data.settings.installDrive = v; else delete data.settings.installDrive; save(); });
 $('#setEmoji').onchange = () => { data.settings.phoneEmoji = $('#setEmoji').checked; save(); applyEmoji(); };
 $('#setArtStrong').onchange = () => { data.settings.artStrong = $('#setArtStrong').checked; save(); document.body.classList.toggle('art-strong', data.settings.artStrong); };
-$('#voiceTest').onclick = () => { $('#settings').close(); window.Voice?.start(); };
-// The assistant is called Akai, always: the wake word is his name
-const saveWake = () => {
-  data.settings.wakeWord = 'أكاي';
-  data.settings.wakeOn = $('#setWakeOn').checked;
-  save(); window.Voice?.wakeStop(); setTimeout(() => window.Voice?.wakeSync(), 300);
-  if (data.settings.wakeOn) toast('🎙 قل "أكاي" وبعدها طلبك');
-};
-$('#setWakeOn').onchange = saveWake;
 $('#setName').onchange = () => { data.user = { ...(data.user || {}), name: $('#setName').value.trim() }; save(); if (!currentPageId) $('#title').textContent = greeting(); };
 $('#setBright').oninput = () => { data.settings.brightness = Number($('#setBright').value) / 100; save(); window.SB?.applyLook(); };
 $('#setAfk').onchange = () => { data.settings.afk = $('#setAfk').checked; save(); };
@@ -2403,8 +2387,6 @@ function drawAvatar() { const b = $('#avatarBtn'); const a = data.settings?.avat
 $('#setAvatarPick').onclick = async () => { const f = await pv.pickFile('image'); if (f) { data.settings.avatar = f; save(); drawAvatar(); toast('حطيت صورتك'); } };
 $('#setAvatarClear').onclick = () => { delete data.settings.avatar; save(); drawAvatar(); };
 $('#avatarBtn').onclick = () => openSettings('look');
-// ---- the assistant's name ----
-$('#setAkaiName').onchange = () => { const n = $('#setAkaiName').value.trim(); if (n) data.settings.akaiName = n; else delete data.settings.akaiName; save(); window.Akai?.sync?.(); toast(`صار اسمه ${n || 'أكاي'}: ناده باسمه`); };
 // ---- keys & BIOS: drop them here, they go where every emulator looks ----
 async function keysStatus() {
   const r = await pv.biosStatus?.().catch(() => null);
@@ -2428,8 +2410,6 @@ async function addKeys(files) {
 }
 // ---- plugins: optional extras, switch off what you don't need (lighter app) ----
 const PLUGINS = [
-  ['akai', '🙂', 'أكاي (الشخصية)', 'يطل ويرد عليك بفقاعة كلام'],
-  ['wake', '🎙', 'النداء بالصوت', 'يسمع اسمه دايم (ياخذ شوي من المعالج)'],
   ['tunes', '💿', 'ألحان الخلفية (القرص)', 'موسيقى هادية لما ما فيه شي شغّال'],
   ['scenes', '🌄', 'المناظر المتحركة', 'السماء والنجوم والمباني خلف الصفحات'],
   ['party', '👥', 'تابع معي', 'زر المتابعة مع غيرك في صفحة المشاهدة'],
@@ -2508,8 +2488,6 @@ async function deviceScan(fresh) {
     if (weak) { data.settings.lite = true; data.settings.noBlur = true; did.push('وضع خفيف'); }
     if (d.laptop && !weak) { data.settings.noBlur = true; did.push('أخف على البطارية'); }
     if (!d.bluetooth && !(d.wireless || []).length) { (data.settings.plugins ||= {}).battery = false; did.push('بدون تنبيه الشحن (ما فيه أجهزة لاسلكية)'); }
-    if (!mics) { data.settings.wakeOn = false; did.push('بدون نداء أكاي (ما فيه مايك)'); }
-    if (!navigator.gpu || !strongGpu) { data.settings.voiceModel = 'base'; }
     if (weak) (data.settings.plugins ||= {}).scenes = false;
     data.settings.deviceTuned = Date.now();
     save(); applyPlugins();
@@ -2561,14 +2539,12 @@ function drawPlugins() {
   $('#pluginList').innerHTML = PLUGINS.map(([k, i, t, d]) => `<label class="plug"><span class="pi">${i}</span><span class="pt"><b>${t}</b><small>${d}</small></span><input type="checkbox" data-plug="${k}" ${(k === 'wake' ? !!data.settings.wakeOn : plugOn(k)) ? 'checked' : ''}></label>`).join('');
   $('#pluginList').querySelectorAll('[data-plug]').forEach((c) => c.onchange = () => {
     const k = c.dataset.plug;
-    if (k === 'wake') { $('#setWakeOn').checked = c.checked; saveWake(); return; }
     (data.settings.plugins ||= {})[k] = c.checked; save(); applyPlugins();
     toast(c.checked ? 'تشغّلت' : 'طفّيتها');
   });
 }
 // ---- advanced ----
 $('#advMusicVol').oninput = () => window.Music?.setVol?.(Number($('#advMusicVol').value) / 100);
-$('#advDingVol').oninput = () => { data.settings.dingVol = Number($('#advDingVol').value) / 100; save(); };
 $('#advDuck').onchange = () => { data.settings.duck = $('#advDuck').checked; save(); };
 $('#advLite').onchange = () => { data.settings.lite = $('#advLite').checked; save(); applyPlugins(); };
 $('#advReduceFx').onchange = () => { data.settings.noBlur = $('#advReduceFx').checked; save(); applyPlugins(); };
@@ -2973,8 +2949,6 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
   if (!data.webIconsV2) { allItems().forEach((i) => { if (/youtube\.com\/s\/desktop/.test(i.icon || '')) delete i.icon; }); data.webIconsV2 = true; save(); }
   if (inElectron) allItems().filter((i) => isWeb(i.target) && !i.image && !i.icon).forEach((i) => webArt(i));
   firstRunSetup();
-  // the voice model is big: get it ready ahead only when Akai is called by name (or the PC has a graphics card for it)
-  if (inElectron) setTimeout(async () => { if (data.settings?.wakeOn || navigator.gpu) await window.Voice?.preload(); window.Voice?.wakeSync(); }, 8000);
   setInterval(() => { if (!currentPageId) $('#title').textContent = greeting(); }, 60000);
 })();
 
@@ -2994,7 +2968,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
 
 // ---------- Closing: a goodbye, then the app really quits ----------
 pv.onBye(() => {
-  // a little "boo!": Akai pops right up to the screen, then laughs and waves (funny, not a horror film)
+  // a little "boo!" before closing (funny, not a horror film)
   const d = document.createElement('div'); d.id = 'byeScreen'; d.className = 'boo';
   const face = document.querySelector('#akai .ak-face')?.cloneNode(true);
   d.innerHTML = `<div class="boo-face"></div><h1 class="boo-t">بـــــخ! 👻</h1><p class="boo-s">هههه خوفتك؟ مع السلامة${data?.user?.name ? ' يا ' + esc(data.user.name) : ''} 👋</p>`;
@@ -3076,9 +3050,8 @@ async function pushRemote() {
   if (window.Series && Date.now() - remoteShowsAt > 10 * 60000 && w?.folders?.length && !window.SB_PAUSED?.()) { remoteShowsAt = Date.now(); try { remoteShows = await Series.scanAll(); } catch { remoteShows = []; } }
   const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
   const torrents = (data.torLib || []).filter((t) => t.state && t.state !== 'saved').slice(0, 20).map((t) => ({ title: t.title, state: t.state, pct: t.pct }));
-  const ak = window.Akai?.look?.() || {};
   const shots = window.Shots?.recent?.(80) || [];
-  pv.remoteState({ games, lib, watch, shows, shots, torrents, name: data.user?.name || '', lang: data.settings.lang || 'ar', akai: { look: { hat: ak.hat, color: ak.color, hair: ak.hair, girl: ak.girl }, hats: ak.hats, colors: ak.colors, hairs: ak.hairs } });
+  pv.remoteState({ games, lib, watch, shows, shots, torrents, name: data.user?.name || '', lang: data.settings.lang || 'ar' });
 }
 setInterval(() => { if (!window.SB_PAUSED?.()) pushRemote(); }, 15000); setTimeout(pushRemote, 4000);
 pv.onRemote((c) => {
@@ -3087,9 +3060,7 @@ pv.onRemote((c) => {
   else if (c.type === 'torDl') { const t = (data.torLib || []).find((x) => x.id === c.id); if (t && t.state === 'saved') pv.torAdd(t.file, { quiet: true }).then((r) => { if (r.ok) { t.state = 'downloading'; t.pct = 0; save(); toast(`📱 ⬇ بدأ تحميل ${t.title}`); if (currentPageId === 'games' && gamesTab === 'tor') renderPage(); } else toast('ما قدرت: ' + r.error); }); }
   else if (c.type === 'showPlay') { window.Series?.playFile(c.dir, c.file); toast('📱 من الجوال'); }
   else if (c.type === 'epProg') window.Series?.progress(c.dir, c.file, c.t, c.d);
-  else if (c.type === 'akai') { window.Akai?.setLook?.(c.look); window.Akai?.say?.('لبس جديد؟ 😎'); pushRemote(); }
   else if (c.type === 'toast') toast(c.msg);
-  else if (c.type === 'say') window.Akai?.say(c.text);
 });
 
 // ---------- Shared torrents (a folder you share with your people) ----------
@@ -3212,14 +3183,8 @@ async function installMods(g, files) {
   if (currentPageId && page()?.type === 'mods') renderPage();
 }
 
-// ---------- Away from the PC (10 minutes with no mouse or keyboard, or locked): Akai's ear sleeps ----------
-pv.onAway?.((away) => {
-  if (away) window.Voice?.sleep?.();
-  else { pv.log('voice: you are back, listening again'); window.Voice?.wakeSync?.(); }
-});
-
 // ---------- Memory: while the app sits in the background, hand back what it can draw again later ----------
-// (picture caches and loose JavaScript memory). Akai's ear keeps listening; nothing you see changes.
+// (picture caches and loose JavaScript memory). Nothing you see changes.
 {
   let idleT = null;
   const goIdle = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (document.hasFocus()) return; pv.freeMemory?.(); pv.log('memory: background, caches handed back'); }, 90 * 1000); };

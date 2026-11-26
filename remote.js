@@ -1,6 +1,6 @@
 // "التحكم من الجوال": a small page on your home Wi-Fi. Open it on the phone (QR in Settings) and you can
 // start a game, pick up a series on the PC or right on the phone/iPad, start a download
-// from your torrent library, and dress Akai — while the PC does the work.
+// from your torrent library — while the PC does the work.
 // Only reachable on your network, and only with the secret key in the link.
 const http = require('http');
 const fs = require('fs');
@@ -14,7 +14,7 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
   let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8').replace(/^\uFEFF/, '')); } catch {}
   const saveCfg = () => { try { fs.writeFileSync(cfgFile, JSON.stringify(cfg)); } catch {} };
   if (!cfg.key) { cfg.key = crypto.randomBytes(9).toString('hex'); saveCfg(); }
-  let server = null, state = { games: [], lib: [], watch: [], shows: [], name: '', torrents: [], lang: 'ar', akai: {} };
+  let server = null, state = { games: [], lib: [], watch: [], shows: [], name: '', torrents: [], lang: 'ar' };
   let imgs = new Map(), eps = new Map(); // id -> picture source / episode file (only these can be read from the phone)
   const IMG = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.bmp': 'image/bmp' };
   const VID = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo', '.ts': 'video/mp2t' };
@@ -81,7 +81,6 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
     if (c.type === 'torDl' && c.id) { send({ type: 'torDl', id: String(c.id) }); return ({ ok: true }); }
     if (c.type === 'showPlay' && c.ep) { const f = eps.get(String(c.ep)); if (!f) return ({ ok: false }); send({ type: 'showPlay', dir: f.dir, file: f.file }); return ({ ok: true }); }
     if (c.type === 'epProg' && c.ep) { const f = eps.get(String(c.ep)); if (!f) return ({ ok: false }); send({ type: 'epProg', dir: f.dir, file: f.file, t: Number(c.t) || 0, d: Number(c.d) || 0 }); return ({ ok: true }); }
-    if (c.type === 'akai' && c.look && typeof c.look === 'object') { const L = {}; for (const k of ['hat', 'color', 'hair']) if (typeof c.look[k] === 'string' && c.look[k].length < 20) L[k] = c.look[k]; if ('girl' in c.look) L.girl = !!c.look.girl; send({ type: 'akai', look: L }); return ({ ok: true }); }
     if (c.type === 'say' && c.text) { send({ type: 'say', text: String(c.text).slice(0, 120) }); return ({ ok: true }); }
     return ({ ok: false, error: 'unknown', code: 400 });
   }
@@ -182,7 +181,7 @@ video{width:100%;border-radius:12px;background:#000;margin-top:10px}
 .sw{width:34px;height:34px;border-radius:50%;border:2px solid transparent!important;padding:0!important}.sw.on,.opt.on{border-color:var(--acc)!important}.opt{padding:8px 12px;border-radius:12px;border:2px solid var(--line);background:none;color:var(--text);font:inherit}
 </style></head><body>
 <header><h1>🎮 Silver Bullet <small id="who"></small></h1>
-<div class="tabs"><button data-t="games" class="on" data-i="games"></button><button data-t="watch" data-i="watch"></button><button data-t="dl" data-i="dl"></button><button data-t="shots" data-i="shots"></button><button data-t="akai" data-i="akai"></button></div></header>
+<div class="tabs"><button data-t="games" class="on" data-i="games"></button><button data-t="watch" data-i="watch"></button><button data-t="dl" data-i="dl"></button><button data-t="shots" data-i="shots"></button></div></header>
 <main>
 <div id="fix"></div>
 <section id="games"><div class="sub"><button data-g="inst" class="on" data-i="inst"></button><button data-g="lib" data-i="lib"></button></div>
@@ -191,7 +190,6 @@ video{width:100%;border-radius:12px;background:#000;margin-top:10px}
 <section id="dl" hidden><div class="card"><b>🧲 <span data-i="startdl"></span></b><p class="hint" data-i="maghint"></p><div class="row"><input id="mag" placeholder="magnet:?xt=…" dir="ltr" style="flex:1"><button id="go" data-i="go"></button></div></div>
 <div class="card"><b>⬇ <span data-i="dls"></span></b><div id="tl"></div></div></section>
 <section id="shots" hidden><p class="hint" data-i="shothint"></p><div class="grid sg" id="sg"></div><div id="sv" class="sv" hidden></div></section>
-<section id="akai" hidden><div class="card" id="ak"></div></section>
 </main><div class="toast" id="toast"></div><div class="off" id="off" hidden></div>
 <script>
 const RELAY=${relay ? 'true' : 'false'};const K=new URLSearchParams(location.search).get('k');const $=(s)=>document.querySelector(s);let S={games:[],lib:[],watch:[],shows:[]},gt='inst',openShow=null;
@@ -216,7 +214,7 @@ if(RELAY)relayConn();
 function call(kind,body){if(!RELAY)return kind==='state'?fetch('/api/state?k='+K,{cache:'no-store'}).then((r)=>r.json()):fetch('/api/cmd?k='+K,{method:'POST',body:JSON.stringify(body)}).then((r)=>r.json());
  return new Promise((res,rej)=>{const go=()=>{const id=++cid;calls.set(id,{res,rej});try{ws.send(JSON.stringify({type:'CANDIDATE',dst:'sbr-'+K,payload:{type:'data',candidate:{candidate:'',sdpMid:'0',sdpMLineIndex:0},sb:{t:'api',id,kind,body},connectionId:'sb'}}))}catch(err){}setTimeout(()=>{if(calls.has(id)){calls.delete(id);parts.delete(id);rej(new Error('timeout'))}},15000)};wsOpen?go():wq.push(go)});}
 const cmd=(o)=>call('cmd',o).catch(()=>({ok:false}));
-document.querySelectorAll('.tabs button').forEach((b)=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach((x)=>x.classList.toggle('on',x===b));for(const s of ['games','watch','dl','shots','akai'])$('#'+s).hidden=s!==b.dataset.t;try{localStorage.setItem('sbtab',b.dataset.t)}catch{}if(b.dataset.t==='akai')drawAkai();});
+document.querySelectorAll('.tabs button').forEach((b)=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach((x)=>x.classList.toggle('on',x===b));for(const s of ['games','watch','dl','shots'])$('#'+s).hidden=s!==b.dataset.t;try{localStorage.setItem('sbtab',b.dataset.t)}catch{}});
 document.querySelectorAll('[data-g]').forEach((b)=>b.onclick=()=>{gt=b.dataset.g;document.querySelectorAll('[data-g]').forEach((x)=>x.classList.toggle('on',x===b));drawGames();});
 const tile=(g,extra)=>'<button class="g" style="--h:'+hue(g.name)+'" data-id="'+esc(g.id)+'" data-kind="'+(g.tor?'tor':'game')+'"><span class="ini">'+esc((g.name||'?')[0])+'</span>'+(img(g.pic,g.web)?'<img loading="lazy" src="'+img(g.pic,g.web)+'" onerror="this.remove()">':'')+(extra?'<em>'+extra+'</em>':'')+'<span>'+esc(g.name)+'</span></button>';
 function drawGames(){const q=$('#q').value.trim().toLowerCase();const list=(gt==='inst'?S.games:S.lib).filter((g)=>!q||g.name.toLowerCase().includes(q));
@@ -242,18 +240,12 @@ let pt=0;function playHere(sh,e){const vp=$('#vp');vp.innerHTML='<b>'+esc(e.name
  v.onended=()=>{cmd({type:'epProg',ep:e.id,t:Math.floor(v.duration),d:Math.floor(v.duration)});const n=sh.eps[sh.eps.indexOf(e)+1];if(n)playHere(sh,n)};scrollTo(0,0);}
 function drawShots(){const l=S.shots||[];$('#sg').innerHTML=l.map((x,i)=>'<button class="g" data-sh="'+i+'">'+(x.video?'<span class="ini">▶</span>':'<img loading="lazy" src="/ep/'+x.id+'?k='+K+'" onerror="this.remove()">')+'<span>'+esc(x.game||x.name)+'</span></button>').join('')||'<p class="hint">'+t('none')+'</p>';
  document.querySelectorAll('[data-sh]').forEach((b)=>b.onclick=()=>{const x=l[Number(b.dataset.sh)];const sv=$('#sv');const src='/ep/'+x.id+'?k='+K;sv.innerHTML=(x.video?'<video controls playsinline autoplay src="'+src+'"></video>':'<img src="'+src+'">')+'<b>'+esc(x.game)+'</b><div class="row"><a class="btn" href="'+src+'&dl=1" download="'+esc(x.name)+'">⬇</a>'+(navigator.share?'<button class="btn gh" id="shs">📤</button>':'')+'<button class="btn gh" id="shx">✕</button></div>';sv.hidden=false;$('#shx').onclick=()=>{sv.hidden=true;sv.innerHTML=''};const sh=$('#shs');if(sh)sh.onclick=async()=>{try{const bl=await (await fetch(src+'&dl=1')).blob();await navigator.share({files:[new File([bl],x.name,{type:bl.type})]})}catch{}};});}
-function drawAkai(){const a=S.akai||{},l=a.look||{};const hats=a.hats||{};
- $('#ak').innerHTML='<b>'+t('kind')+'</b><div class="row" style="margin:8px 0 14px"><button class="opt '+(!l.girl?'on':'')+'" data-a="girl" data-v="">'+t('boy')+'</button><button class="opt '+(l.girl?'on':'')+'" data-a="girl" data-v="1">'+t('girl')+'</button></div>'
- +'<b>'+t('hat')+'</b><div class="row" style="margin:8px 0 14px">'+Object.entries(hats).map(([k,v])=>'<button class="opt '+((l.hat||'theme')===k?'on':'')+'" data-a="hat" data-v="'+k+'">'+esc(v)+'</button>').join('')+'</div>'
- +'<b>'+t('color')+'</b><div class="row" style="margin:8px 0 14px">'+(a.colors||[]).map((c)=>'<button class="sw '+(l.color===c?'on':'')+'" style="background:'+c+'" data-a="color" data-v="'+c+'"></button>').join('')+'<button class="opt" data-a="color" data-v="">'+t('def')+'</button></div>'
- +'<b>'+t('hair')+'</b><div class="row" style="margin:8px 0 4px">'+(a.hairs||[]).map((c)=>'<button class="sw '+(l.hair===c?'on':'')+'" style="background:'+c+'" data-a="hair" data-v="'+c+'"></button>').join('')+'<button class="opt" data-a="hair" data-v="">'+t('def')+'</button></div>';
- document.querySelectorAll('#ak [data-a]').forEach((b)=>b.onclick=async()=>{const k=b.dataset.a,v=b.dataset.v;const look={};look[k]=k==='girl'?!!v:v;S.akai.look={...l,...look};drawAkai();const r=await cmd({type:'akai',look});toast(r.ok?t('okk'):t('fail'))});}
 $('#go').onclick=async()=>{const l=$('#mag').value.trim();if(!/^magnet:/i.test(l))return toast('magnet:…');const r=await cmd({type:'magnet',link:l});toast(r.ok?t('dlstart'):t('fail'));if(r.ok)$('#mag').value='';};
 // the fixed address (pc-name.local): offer it once it answers, so the saved home-screen app keeps working if the PC's address changes
 let fixChecked=false;async function checkFixed(s){if(RELAY||fixChecked||!s.host||location.hostname===s.host)return;fixChecked=true;try{const r=await fetch('http://'+s.host+':'+s.port+'/api/ping?k='+K,{mode:'cors'});const j=await r.json();if(j.ok)$('#fix').innerHTML='<div class="ban"><b>'+t('fixed')+'</b><a class="btn" href="http://'+s.host+':'+s.port+'/?k='+K+'">'+t('use')+'</a></div>';}catch{}}
 let first=true,fails=0,lastKey='';async function poll(){try{const s=await call('state');if(!s||!Array.isArray(s.games))throw new Error('closed');fails=0;$('#off').hidden=true;
 const key=JSON.stringify([s.lang,s.games.map((g)=>g.id+g.pic),(s.lib||[]).map((g)=>g.id+g.state+Math.round(g.pct||0)),(s.watch||[]).map((w)=>w.id+w.time+(w.fav?'*':'')),(s.shows||[]).map((x)=>x.dir+x.eps.length),(s.shots||[]).map((x)=>x.id)]);
-S=s;S.shots||=[];S.lib||=[];S.watch||=[];S.shows||=[];S.akai||={};if(first||s.lang!==document.documentElement.lang)lang(s.lang||'ar');$('#who').textContent=s.name?'· '+t('hi')+' '+s.name:'';
+S=s;S.shots||=[];S.lib||=[];S.watch||=[];S.shows||=[];if(first||s.lang!==document.documentElement.lang)lang(s.lang||'ar');$('#who').textContent=s.name?'· '+t('hi')+' '+s.name:'';
 if(key!==lastKey){lastKey=key;drawGames();drawShots();if(!document.querySelector('#vp video'))drawWatch();}
 if(first){first=false;try{const tb=localStorage.getItem('sbtab');if(tb)document.querySelector('.tabs [data-t="'+tb+'"]')?.click()}catch{}}
 $('#tl').innerHTML=(s.torrents||[]).map((x)=>'<div class="t"><span>'+esc(x.title)+'</span><i>'+(x.state==='done'?'✓':x.state==='dead'?t('dead'):Math.round(x.pct||0)+'%')+'</i></div>').join('')||'<p class="hint">'+t('nodl')+'</p>';checkFixed(s);}

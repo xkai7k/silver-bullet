@@ -1,5 +1,5 @@
 // Rest ("سكون"): while you play a game (or watch something full screen in here) the app goes quiet:
-// animations stop, the background stops drawing, memory is handed back. Spotify and Akai's music commands keep working.
+// animations stop, the background stops drawing, memory is handed back. Spotify keeps working.
 // It wakes by itself when the game closes; or hold Esc for 3 seconds to wake it by hand.
 (() => {
   let mode = ''; let freeT = null;
@@ -12,8 +12,8 @@
     clearTimeout(freeT);
     if (next) {
       pv.log?.(`rest ${next}${why ? ' (' + why + ')' : ''}`);
-      // after a moment (the game is loading), give memory back: picture caches, the big voice model
-      freeT = setTimeout(() => { if (!mode) return; window.Voice?.release?.(); pv.freeMemory?.(); }, 4000);
+      // after a moment (the game is loading), give memory back: picture caches
+      freeT = setTimeout(() => { if (!mode) return; pv.freeMemory?.(); }, 4000);
     } else if (was) {
       // waking up: draw the page again calmly (one frame at a time, not everything at once)
       const redraw = () => { try { if (typeof renderPage === 'function' && currentPageId) renderPage(); } catch {} };

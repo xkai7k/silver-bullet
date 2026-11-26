@@ -33,7 +33,6 @@
     window.SB_WELCOME_PENDING = false;
     setTimeout(() => wel.remove(), 900);
     if (data.music?.on !== false && !(typeof spState !== 'undefined' && spState.playing)) window.Music?.play();
-    setTimeout(() => window.Akai?.greet(), 900);
     document.removeEventListener('keydown', anyKey, true);
     window.removeEventListener('gamepadconnected', anyKey);
     clearInterval(padWatch);
@@ -124,7 +123,6 @@
     closeWebIfOpen(); window.closeDetail?.();
     currentPageId = null; SB.moodView = id;
     render();
-    window.Akai?.say(`مود ${m.name} ${m.emoji || ''}`, 'happy');
   };
   SB.renderMood = () => {
     const m = data.moods.find((x) => x.id === SB.moodView);

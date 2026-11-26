@@ -180,7 +180,7 @@ ipcMain.handle('data:save', (_e, data) => {
 });
 
 // ---------- Launching (with play-time tracking for .exe files) ----------
-let gamesRunning = 0; // games started from here that are still open (Akai stays quiet outside the app meanwhile)
+let gamesRunning = 0; // games started from here that are still open (the app stays quiet meanwhile)
 function trackSpawn(e, exe, args, itemId) {
   const started = Date.now();
   gamesRunning++;
@@ -1560,7 +1560,7 @@ ipcMain.handle('game:running', () => gamesRunning > 0 || restState.game);
 
 // ---------- Rest ("سكون"): while a game or a full-screen video is in front, the app goes quiet ----------
 // A tiny helper (compiled once on this PC with Windows' own C# compiler, a few KB in memory) tells what is in front.
-// Only Spotify control and Akai's music commands keep working; everything else waits, and memory is handed back.
+// Only Spotify control keeps working; everything else waits, and memory is handed back.
 const restState = { game: false, fg: '', fs: 0, reason: '' };
 let sbw = null;
 function helperExe(name = 'sbwatch') {
@@ -1633,25 +1633,6 @@ ipcMain.handle('overlay:note', (_e, icon, title, body) => {
   } catch (e) { log('note failed', e.message); return false; }
 });
 ipcMain.handle('rest:wake', () => { setRest(false, 'esc'); return true; });
-// Away from the PC: nobody talks to Akai, so his ear sleeps and hands its memory back (~half a GB with the mic).
-// Not while a game or a full-screen video is in front (a controller doesn't count as "using the PC" to Windows).
-let away = false, awayT = null;
-function checkAway() {
-  clearTimeout(awayT);
-  let idle = 0, locked = false;
-  try { const { powerMonitor } = require('electron'); idle = powerMonitor.getSystemIdleTime(); locked = powerMonitor.getSystemIdleState(1) === 'locked'; } catch {}
-  const now = !restState.game && (locked || idle >= 10 * 60);
-  if (now !== away && !(away && !now && idle > 5 && !locked)) { // back = a key or the mouse moved in the last few seconds
-    away = now; log(away ? `away (${locked ? 'locked' : Math.round(idle / 60) + ' min idle'}): voice sleeps` : 'back: voice wakes');
-    try { mainWin?.webContents.send('away', away); } catch {}
-    if (away) setTimeout(() => memLog('away'), 60000);
-  }
-  awayT = setTimeout(checkAway, away ? 3000 : 30000); // while away, look often so it's listening again right after you're back
-}
-app.whenReady().then(() => {
-  setTimeout(checkAway, 60000);
-  try { const { powerMonitor } = require('electron'); powerMonitor.on('lock-screen', checkAway); powerMonitor.on('unlock-screen', checkAway); } catch {}
-});
 // memory, measured: logged now and then so a heavy part shows up
 function memLog(tag) {
   try {
@@ -1691,7 +1672,7 @@ function setAppVolume(level, target) { return new Promise((resolve) => {
     resolve(err || /^err:/.test(last) ? 'none' : last);
   });
 }); }
-ipcMain.handle('notify', (_e, body) => { try { const { Notification } = require('electron'); if (Notification.isSupported()) new Notification({ title: 'أكاي', body: String(body || ''), silent: true }).show(); } catch {} return true; });
+ipcMain.handle('notify', (_e, body) => { try { const { Notification } = require('electron'); if (Notification.isSupported()) new Notification({ title: 'Silver Bullet', body: String(body || ''), silent: true }).show(); } catch {} return true; });
 // Closing: the app says goodbye first, then really quits (nothing stays running in the background)
 let byeSaid = false;
 ipcMain.handle('app:quit', () => { byeSaid = true; try { mainWin?.destroy(); } catch {} app.quit(); return true; });
@@ -2162,14 +2143,6 @@ app.whenReady().then(() => {
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'hid' || permission === 'media' || permission === 'notifications' || true);
   session.defaultSession.setDevicePermissionHandler((d) => d.deviceType === 'hid' && d.device.vendorId === 0x054c);
-  try {
-    globalShortcut.register('Control+Alt+Space', () => {
-      if (!mainWin) return;
-      if (mainWin.isMinimized()) mainWin.restore();
-      mainWin.show(); mainWin.focus();
-      mainWin.webContents.send('voice:start');
-    });
-  } catch {}
 });
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('window-all-closed', () => app.quit());

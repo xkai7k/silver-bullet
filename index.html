@@ -38,7 +38,6 @@
   </header>
 
   <div id="dock">
-    <button id="micBtn" class="dock-btn" title="كلّم أكاي (Ctrl+Alt+Space)">🎙<small>أكاي</small></button>
     <button id="themeBtn" class="dock-btn" title="الثيمات">🎨<small>الثيم</small></button>
   </div>
 
@@ -96,7 +95,7 @@
         <div class="cat-chips" id="catChips"></div>
         <input type="hidden" name="categories">
       </div>
-      <label>الكلمة الصوتية (اختياري)<input name="voice" placeholder="مثلاً: الدن رينق، القتال (افصل بفاصلة)"></label>
+      <label hidden>الكلمة الصوتية (اختياري)<input name="voice" placeholder="مثلاً: الدن رينق، القتال (افصل بفاصلة)"></label>
       <div class="actions">
         <button type="button" class="btn ghost" id="editorCancel">إلغاء</button>
         <button class="btn primary" value="save">حفظ</button>
@@ -202,7 +201,7 @@
       <div id="remoteBox"></div>
       <label class="check"><input type="checkbox" id="remoteNetOn"> 🌍 ومن أي مكان (حتى لو جوالك على بيانات الجوال أو شبكة ثانية)</label>
       <div id="remoteNetBox"></div>
-      <p class="hint">من الجوال: تشغّل أي لعبة، تتحكم بالأغاني والصوت، وتبدأ تحميل. يشتغل بس على شبكة بيتك، وبالرابط السري اللي في الباركود. أول مرة ممكن ويندوز يسألك عن الجدار الناري: اختر <b>السماح</b>.</p>
+      <p class="hint">من الجوال: تشغّل أي لعبة أو موقع، وتشوف لقطاتك، وتبدأ تحميل. يشتغل بس على شبكة بيتك، وبالرابط السري اللي في الباركود. أول مرة ممكن ويندوز يسألك عن الجدار الناري: اختر <b>السماح</b>.</p>
     </div>
     <div id="setPlugins" hidden>
       <p class="hint">إضافات اختيارية: طفّ اللي ما تحتاجه ويصير البرنامج أخف.</p>
@@ -210,7 +209,6 @@
     </div>
     <div id="setAdvanced" hidden>
       <label>صوت الألحان (القرص) <input type="range" id="advMusicVol" min="0" max="100" step="5"></label>
-      <label>صوت أكاي (التنبيه لما يسمعك) <input type="range" id="advDingVol" min="0" max="100" step="5"></label>
       <label class="check"><input type="checkbox" id="advDuck"> لما يشتغل سبوتيفاي أو فيديو، الألحان توقف لحالها</label>
       <label class="check"><input type="checkbox" id="advLite"> وضع خفيف: حركات أقل (للأجهزة الضعيفة أو اللابتوب على البطارية)</label>
       <label class="check"><input type="checkbox" id="advReduceFx"> بدون تمويه خلف القوائم (أسرع)</label>
@@ -223,24 +221,11 @@
     <div id="setGeneral">
     <label>اسمك (يناديك فيه البرنامج)<input id="setName" maxlength="24" placeholder="اسمك"></label>
     <label>اللغة / Language<select id="setLang" class="no-tr"><option value="ar">العربية</option><option value="en">English</option></select></label>
-    <label>اسم المساعد (تناديه فيه)<input id="setAkaiName" maxlength="16" placeholder="أكاي"></label>
-    <button class="btn ghost" id="setAkaiLook" type="button" onclick="window.Akai?.lookDialog?.()">🎨 غيّر شكله (لبس، قبعة، لون، ولد/بنت)</button>
-    <label class="check"><input type="checkbox" id="setWakeOn"> نادِه بصوتك بدل الضغط عليه</label>
-    <p class="hint">قل اسمه وبعدها طلبك على طول (مثلاً "أكاي سبوتيفاي")، أو اسمه لحاله وانتظره يطل عليك. <b>وأنت برا البرنامج</b> يسمع أوامر الأغاني بس: "أكاي قدّم الأغنية"، "أكاي خل الصوت 30"، "Akai next song". وإذا لعبة شغّالة ما يسمع شي. كل شي يصير على جهازك وما يطلع للنت.</p>
-    <label>دقة التعرف على الصوت
-      <select id="setVoiceModel">
-        <option value="small">أدق بالعربي (الافتراضي)</option>
-        <option value="base">أسرع وأخف</option>
-      </select>
-    </label>
     <label class="check"><input type="checkbox" id="setAutostart"> شغّل Silver Bullet تلقائياً مع ويندوز</label>
     <label class="check"><input type="checkbox" id="setAfk"> إذا ما لمست شي ١٥ دقيقة، تختفي القوائم ويبقى المنظر المتحرك (يرجع أول ما تحرك الماوس أو اليد)</label>
-    <p class="hint">أول مرة تستخدم الصوت ينزّل نموذج التعرف مرة وحدة، وبعدها يشتغل بدون نت.<br>
-      اختصار الصوت من أي مكان: <b dir="ltr">Ctrl + Alt + Space</b></p>
     </div>
     <div class="actions">
       <button type="button" class="btn ghost" id="settingsClose">تم</button>
-      <button type="button" class="btn ghost" id="voiceTest">🎙 جرّب الصوت</button>
     </div>
   </dialog>
 
@@ -270,9 +255,7 @@
   <script src="series.js"></script>
   <script src="sb.js"></script>
   <script src="profile.js"></script>
-  <script src="akai.js"></script>
   <script src="pad.js"></script>
-  <script src="voice.js"></script>
   <script src="rest.js"></script>
   <script src="party.js"></script>
   <script src="i18n.js"></script>
