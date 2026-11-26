@@ -623,6 +623,21 @@ function backupSaves() {
   return backingUp;
 }
 ipcMain.handle('saves:backup', () => backupSaves());
+// Your app data (games, ratings, favourites, where you got to…) is one file: a copy goes to OneDrive once a day,
+// the last 14 days kept. If the file ever breaks or you move to another PC, it's there (Silver Bullet Saves\App data).
+function backupData() {
+  try {
+    const src = dataFile(); if (!fs.existsSync(src)) return;
+    const dir = path.join(savesHome(), 'App data'); fs.mkdirSync(dir, { recursive: true });
+    const day = new Date().toISOString().slice(0, 10), out = path.join(dir, `preview-data-${day}.json`);
+    const text = fs.readFileSync(src, 'utf8'); JSON.parse(text); // only a file that reads back whole gets kept
+    fs.writeFileSync(out, text);
+    const old = fs.readdirSync(dir).filter((f) => /^preview-data-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+    for (const f of old.slice(0, Math.max(0, old.length - 14))) fs.unlinkSync(path.join(dir, f));
+    log('app data backed up ->', out);
+  } catch (e) { log('app data backup failed', e.message); }
+}
+app.whenReady().then(() => { setTimeout(backupData, 2 * 60 * 1000); setInterval(backupData, 24 * 3600e3); });
 ipcMain.handle('saves:open', () => { fs.mkdirSync(savesHome(), { recursive: true }); return shell.openPath(savesHome()); });
 // ---------- Logs window ----------
 ipcMain.handle('logs:get', () => {
@@ -2033,7 +2048,7 @@ app.on('second-instance', () => {
 
 // Diagnostics: dropping a "snap-request.txt" next to the project makes Preview save a
 // screenshot of itself (preview-snap.png). The file may name a view, e.g. "page:games".
-let roms = null;
+let roms = null, remoteApi = null;
 function watchSnapRequests() {
   const req = path.join(SRC_DIR, 'snap-request.txt');
   setInterval(async () => {
@@ -2049,7 +2064,7 @@ function watchSnapRequests() {
         }
         app.relaunch(fs.existsSync(INSTALLED_EXE) ? { execPath: INSTALLED_EXE, args: [] } : undefined); app.exit(0); return; }
       if (/^emutest\b/.test(cmd)) { emuSelfTest(); cmd = ''; }
-      if (/^ps:/.test(cmd)) { const f = path.join(SRC_DIR, 'ps', cmd.slice(3).trim().replace(/[^\w.-]/g, '') + '.ps1'); execFile('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', f], { windowsHide: true, timeout: 60000, maxBuffer: 4e6 }, (err, out, er) => log('ps result', path.basename(f), String(out || '').slice(0, 6000), String(er || (err && err.message) || '').slice(0, 1500))); cmd = ''; }
+      if (/^ps:/.test(cmd)) { const f = path.join(SRC_DIR, 'ps', cmd.slice(3).trim().replace(/[^\w.-]/g, '') + '.ps1'); execFile('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', f], { windowsHide: true, timeout: /gitpush/.test(f) ? 300000 : 60000, maxBuffer: 4e6 }, (err, out, er) => log('ps result', path.basename(f), String(out || '').slice(0, 6000), String(er || (err && err.message) || '').slice(0, 1500))); cmd = ''; }
       if (/^emulog:/.test(cmd)) { emuLogTail(cmd.slice(7).trim()); cmd = ''; }
       if (/^playrom:/.test(cmd)) { const f = cmd.slice(8).trim(); roms?.launchFile?.(f).then((r) => log('playrom result:', r || 'started')); cmd = ''; }
       if (/^importdir:/.test(cmd)) { const d = cmd.slice(10).trim(); const n = roms?.importDir?.(d); log('import dir', d, n); cmd = ''; }
@@ -2080,10 +2095,10 @@ app.whenReady().then(() => {
   setTimeout(() => scanForEmus().catch((e) => log('emu scan', e.message)), 15000);
   setTimeout(() => backupSaves().catch((e) => log('saves', e.message)), 45000);
   try {
-    tor = require('./torrent').setupTorrents({ ipcMain, app, net, log, download, run, EMU_ROOT, getWin: () => mainWin, importGame: (f, mv) => roms?.importFile(f, mv) });
+    tor = require('./torrent').setupTorrents({ ipcMain, app, net, log, download, run, EMU_ROOT, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m), getWin: () => mainWin, importGame: (f, mv) => roms?.importFile(f, mv) });
   } catch (e) { log('torrent setup failed', e.message); }
   // the phone page works even if the torrent part failed to start
-  try { require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;

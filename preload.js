@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('api', {
   remoteInfo: () => ipcRenderer.invoke('remote:info'),
   remoteNewKey: () => ipcRenderer.invoke('remote:newkey'),
   remoteNet: (on) => ipcRenderer.invoke('remote:net', on),
+  remoteNtfy: (on) => ipcRenderer.invoke('remote:ntfy', on),
   remoteCall: (kind, body) => ipcRenderer.invoke('remote:call', kind, body),
   remoteState: (s) => ipcRenderer.send('remote:state', s),
   onRemote: (cb) => ipcRenderer.on('remote:cmd', (_e, c) => cb(c)),

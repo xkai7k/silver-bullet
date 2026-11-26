@@ -2467,7 +2467,20 @@ async function checkPaths() {
   pv.log(`paths checked: ${items.length} items, ${pics} pictures to fetch again, ${gone.length} games/apps not on disk`);
   const was = JSON.stringify(data.missing || []);
   data.missing = gone.map((i) => i.id);
+  setTimeout(offerCleanup, 4000);
   if (JSON.stringify(data.missing) !== was) { save(); render(); }
+}
+// once a week: games/apps whose files are gone get offered for tidying (nothing is removed without a yes)
+function offerCleanup() {
+  const gone = (data.missing || []).map((id) => findItem(id)?.item).filter(Boolean);
+  if (!gone.length || Date.now() - (data.cleanAskAt || 0) < 7 * 864e5 || document.getElementById('cleanCard')) return;
+  const c = document.createElement('div'); c.id = 'cleanCard';
+  const names = gone.slice(0, 4).map((i) => esc(i.name)).join('، ') + (gone.length > 4 ? ` و${gone.length - 4} غيرها` : '');
+  c.innerHTML = `<b>🧹 ${gone.length === 1 ? 'شي واحد ملفه انحذف' : `${gone.length} أشياء ملفاتها انحذفت`}</b><small>${names}</small><div class="cc-row"><button class="btn primary sm" id="ccYes">شيلها</button><button class="btn ghost sm" id="ccNo">خلها</button></div>`;
+  document.body.appendChild(c); requestAnimationFrame(() => c.classList.add('show'));
+  const done = () => { data.cleanAskAt = Date.now(); save(); c.classList.remove('show'); setTimeout(() => c.remove(), 400); };
+  c.querySelector('#ccYes').onclick = () => { deleteItems(gone); data.missing = []; done(); render(); toast(`🧹 شلت ${gone.length}`); };
+  c.querySelector('#ccNo').onclick = done;
 }
 
 // ---------- This PC: look at it once, then set the app up to fit it (not every PC is like the one it was made on) ----------
@@ -3004,8 +3017,16 @@ async function drawRemote(r) {
   $('#remoteNetOn').checked = !!r.net; $('#remoteNetOn').disabled = !r.on;
   $('#remoteNetBox').innerHTML = r.on && r.net ? `<div class="share-body"><div class="qr">${r.netQr || ''}</div><div><p class="hint">هذا الرابط يشتغل من أي مكان (البرنامج لازم يكون شغّال على الكمبيوتر). الصور والحلقات تفتح بس على شبكة البيت.</p><b dir="ltr" class="share-url">${esc(r.netUrl || '')}</b></div></div>` : '';
   remoteNet(r.on && r.net, r.key);
+  drawNtfy(r);
 }
 $('#remoteNetOn').onchange = async () => { const r = await pv.remoteNet($('#remoteNetOn').checked); drawRemote(r); };
+// download finished → a note on the phone (free ntfy app, a secret topic made for this PC)
+function drawNtfy(r) {
+  const c = $('#remoteNtfy'), box = $('#remoteNtfyBox'); if (!c || !box) return;
+  c.checked = !!r.ntfyOn;
+  box.innerHTML = r.ntfyOn && r.ntfy ? `<p class="hint">نزّل تطبيق <b>ntfy</b> (مجاني، آيفون وأندرويد)، اضغط <b>+</b> واكتب هالاسم بالضبط:</p><b dir="ltr" class="share-url">${esc(r.ntfy)}</b><p class="hint">أو افتح من الجوال: <span dir="ltr">ntfy.sh/${esc(r.ntfy)}</span>. وصلتك رسالة تجربة الحين. لا تعطي الاسم لأحد.</p>` : '';
+}
+$('#remoteNtfy') && ($('#remoteNtfy').onchange = async () => { const r = await pv.remoteNtfy?.($('#remoteNtfy').checked); if (r) drawNtfy(r); });
 // "from anywhere": the phone talks through a free relay; the app here answers it (same key as the Wi-Fi link)
 let rnet = null;
 function remoteNet(on, key) {

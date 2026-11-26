@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 function setupTorrents(ctx) {
-  const { ipcMain, app, net, log, download, run, EMU_ROOT, getWin, importGame } = ctx;
+  const { ipcMain, app, net, log, download, run, EMU_ROOT, getWin, importGame, phoneNote } = ctx;
   const TOOL = path.join(EMU_ROOT, '_tools', 'aria2');
   const OUT = path.join(app.getPath('downloads'), 'Silver Bullet Torrents');
   const PORT = process.env.SB_TEST === '1' ? 6816 : 6815, SECRET = crypto.randomBytes(8).toString('hex');
@@ -102,6 +102,7 @@ function setupTorrents(ctx) {
         if (files.some((f) => /\.(nsp|nsz|xci|xcz)$/i.test(f))) send({ status: 'note', text: `${x.bittorrent?.info?.name || 'الملف'} لعبة سويتش، والبرنامج ما فيه محاكي سويتش، فما قدرت أضيفها للمكتبة. الملفات في مجلد التحميلات.` });
         try { const { Notification, shell } = require('electron'); const n = new Notification({ title: '✅ خلص التحميل', body: `${x.bittorrent?.info?.name || 'التورنت'}: اضغط تفتح المجلد` }); n.on('click', () => shell.openPath(OUT)); n.show(); } catch {}
         send({ status: 'done', name: x.bittorrent?.info?.name || '' });
+        try { phoneNote?.('✅ خلص التحميل', x.bittorrent?.info?.name || 'التورنت'); } catch {}
       }
       if (!list.some((x) => ['active', 'waiting', 'paused'].includes(x.status)) && list.length && Date.now() - (tick.lastBusy || 0) > 120000) { /* idle: keep aria2 running quietly */ }
       if (list.some((x) => x.status === 'active')) tick.lastBusy = Date.now();
