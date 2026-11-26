@@ -3,7 +3,10 @@
 // They can ask you to pause/play or go back a bit; you decide. No chat.
 // Connection: WebRTC straight between the two devices; the free PeerJS server only introduces them.
 (() => {
-  const GUEST_PAGE = 'https://raw.githack.com/xkai7k/silver-bullet/main/docs/watch.html';
+  // githack keeps an old copy of a branch link for hours, so the link names the commit that last changed the page
+  let GUEST_PAGE = 'https://raw.githack.com/xkai7k/silver-bullet/main/docs/watch.html';
+  fetch('https://api.github.com/repos/xkai7k/silver-bullet/commits?path=docs/watch.html&per_page=1').then((r) => r.json())
+    .then((j) => { const sha = j?.[0]?.sha; if (/^[0-9a-f]{40}$/.test(sha || '')) GUEST_PAGE = `https://raw.githack.com/xkai7k/silver-bullet/${sha}/docs/watch.html`; }).catch(() => {});
   const SIG = 'wss://0.peerjs.com/peerjs?key=peerjs';
   const ICE = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }];
   const $ = (s) => document.querySelector(s);

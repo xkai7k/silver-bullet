@@ -3057,7 +3057,7 @@ async function pushRemote() {
 }
 setInterval(() => { if (!window.SB_PAUSED?.()) pushRemote(); }, 15000); setTimeout(pushRemote, 4000);
 pv.onRemote((c) => {
-  if (c.type === 'launch') { const f = findItem(c.id); if (f) { launchItem(f.item); toast(`📱 ${f.item.name} من الجوال`); } }
+  if (c.type === 'launch') { const f = findItem(c.id); pv.log('phone: open ' + (f ? f.item.name : 'missing ' + c.id)); if (f) { launchItem(f.item); toast(`📱 ${f.item.name} من الجوال`); } }
   else if (c.type === 'torDl') { const t = (data.torLib || []).find((x) => x.id === c.id); if (t && t.state === 'saved') pv.torAdd(t.file, { quiet: true }).then((r) => { if (r.ok) { t.state = 'downloading'; t.pct = 0; save(); toast(`📱 ⬇ بدأ تحميل ${t.title}`); if (currentPageId === 'games' && gamesTab === 'tor') renderPage(); } else toast('ما قدرت: ' + r.error); }); }
   else if (c.type === 'showPlay') { window.Series?.playFile(c.dir, c.file); toast('📱 من الجوال'); }
   else if (c.type === 'epProg') window.Series?.progress(c.dir, c.file, c.t, c.d);

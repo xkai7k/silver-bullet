@@ -70,7 +70,11 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
       return { ...state, music: m && m.ok && !m.none ? { title: m.title, artist: m.artist, playing: !!m.playing } : null, vol: cfg.vol ?? 50, host: host(), port: PORT };
     }
     c = c || {};
-    if (c.type === 'launch' && c.id) { send({ type: 'launch', id: String(c.id) }); return ({ ok: true }); }
+    if (c.type === 'launch' && c.id) {
+      // sites open inside the app: bring the window up so it shows, even if it was minimized or behind other windows
+      const w = getWin(); if (w && !w.isDestroyed()) { try { if (w.isMinimized()) w.restore(); if (!w.isVisible()) w.show(); w.focus(); } catch {} }
+      send({ type: 'launch', id: String(c.id) }); return ({ ok: true });
+    }
     if (c.type === 'media' && /^(playpause|next|prev)$/.test(c.key)) { await mediaKey(c.key); return ({ ok: true }); }
     if (c.type === 'volume') { const v = Math.max(0, Math.min(100, Math.round(Number(c.level) || 0))); cfg.vol = v; saveCfg(); const r = await setVolume(v, 'spotify'); if (r === 'none') await setVolume(v, 'master'); return ({ ok: true, vol: v }); }
     if (c.type === 'magnet' && /^magnet:\?/i.test(c.link || '')) { const r = await torAdd(c.link); send({ type: 'toast', msg: '📱 بدأ تحميل من الجوال' }); return (r || { ok: false }); }
@@ -111,8 +115,12 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
   }
   function stop() { try { server?.close(); } catch {} server = null; }
   const url = () => `http://${lanAddress() || 'localhost'}:${PORT}/?k=${cfg.key}`;
-  const NET_PAGE = 'https://raw.githack.com/xkai7k/silver-bullet/main/docs/remote.html';
-  const netUrl = () => `${NET_PAGE}?k=${cfg.key}`;
+  // githack keeps an old copy of a branch link for hours, so the link names the commit that last changed the page
+  let pageSha = cfg.pageSha || 'main';
+  const refreshSha = () => net.fetch('https://api.github.com/repos/xkai7k/silver-bullet/commits?path=docs/remote.html&per_page=1', { headers: { 'User-Agent': 'SilverBullet' } })
+    .then((r) => r.json()).then((j) => { const sha = j?.[0]?.sha; if (/^[0-9a-f]{40}$/.test(sha || '') && sha !== pageSha) { pageSha = cfg.pageSha = sha; saveCfg(); log('phone remote page', sha.slice(0, 7)); } }).catch(() => {});
+  setTimeout(refreshSha, 15000); setInterval(refreshSha, 6 * 60 * 60 * 1000);
+  const netUrl = () => `https://raw.githack.com/xkai7k/silver-bullet/${pageSha}/docs/remote.html?k=${cfg.key}`;
   const info = () => ({ on: !!cfg.on, url: url(), fixed: `http://${host()}:${PORT}/?k=${cfg.key}`, qr: cfg.on ? qrSvgOf(url()) : '', net: !!cfg.net, key: cfg.key, netUrl: netUrl(), netQr: cfg.on && cfg.net ? qrSvgOf(netUrl()) : '' });
 
   ipcMain.handle('remote:call', (_e, kind, c) => (cfg.on && cfg.net ? api(kind === 'state' ? 'state' : 'cmd', c) : { ok: false, error: 'off' }));
