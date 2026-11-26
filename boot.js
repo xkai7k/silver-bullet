@@ -14,7 +14,7 @@ function sync(from, to, depth = 0) {
     if (SKIP.test(e.name)) continue;
     const a = path.join(from, e.name), b = path.join(to, e.name);
     if (e.isDirectory()) { if (depth < 2) sync(a, b, depth + 1); continue; }
-    if (!/\.(js|css|html|json|ps1|png|ico|svg|txt|vbs|bat)$/i.test(e.name) || /^package(-lock)?\.json$/i.test(e.name)) continue;
+    if (!/\.(js|css|html|json|ps1|cs|png|ico|svg|txt|vbs|bat)$/i.test(e.name) || /^package(-lock)?\.json$/i.test(e.name)) continue;
     try {
       const sa = fs.statSync(a); let sb = null; try { sb = fs.statSync(b); } catch {}
       if (!sb || sb.size !== sa.size || Math.abs(sb.mtimeMs - sa.mtimeMs) > 1000) { fs.copyFileSync(a, b); fs.utimesSync(b, sa.atime, sa.mtime); }

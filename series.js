@@ -167,4 +167,20 @@
     const sh = shows.find((x) => x.dir === dir); if (!sh) return toast('ما لقيت المجلد');
     play(sh, sh.episodes.find((e) => e.file === showState()[dir]) || sh.episodes[0]);
   };
+  // the phone: a fresh list of shows (with where you are in each), play one on the PC, and keep its progress
+  S.scanAll = async () => { const w = data.pages.find((p) => p.id === 'watch'); if (!w?.folders?.length) return []; return (shows = await pv.seriesScan(w.folders)); };
+  S.playFile = async (dir, file) => {
+    if (!shows.some((x) => x.dir === dir)) await S.scanAll();
+    const sh = shows.find((x) => x.dir === dir); if (!sh) return toast('ما لقيت المجلد');
+    play(sh, sh.episodes.find((e) => e.file === file) || sh.episodes[0]);
+  };
+  S.progress = (dir, file, t, d) => {
+    if (!file || !d) return;
+    const was = prog()[file]; if (was && was.at > Date.now() - 4000 && cur?.file === file) return; // the PC player is on it right now
+    prog()[file] = { t: Math.floor(t), d: Math.floor(d), at: Date.now() };
+    if (dir) showState()[dir] = file;
+    save();
+  };
+  S.progOf = (file) => prog()[file];
+  S.lastOf = (dir) => showState()[dir];
 })();

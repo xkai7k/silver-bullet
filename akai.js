@@ -12,11 +12,12 @@
         <linearGradient id="akSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6d3b3"/><stop offset="1" stop-color="#e4b48e"/></linearGradient>
         <linearGradient id="akHair" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a2a22"/><stop offset="1" stop-color="#16100c"/></linearGradient>
         <linearGradient id="akCoat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4150"/><stop offset="1" stop-color="#1c2028"/></linearGradient>
-        <pattern id="akShm" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="9" height="9" fill="#f6f2ea"/><rect width="4.5" height="4.5" fill="#c7202b"/><rect x="4.5" y="4.5" width="4.5" height="4.5" fill="#c7202b" opacity=".55"/></pattern>
+        <pattern id="akShm" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f7f3ec"/><path d="M0 0h3v3H0z" fill="#c8232c" opacity=".85"/><path d="M3 3h3v3H3z" fill="#c8232c" opacity=".35"/></pattern>
         <radialGradient id="akIris" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#e2a85a"/><stop offset=".6" stop-color="#9a5f24"/><stop offset="1" stop-color="#4a2a10"/></radialGradient>
       </defs>
       <g class="ak-acc ak-acc-back"></g>
       <path class="ak-hair-back" d="M30 74 Q26 30 66 20 Q104 12 128 40 Q140 62 132 96 L124 70 L36 70 Z" fill="url(#akHair)"/>
+      <path class="ak-girl-hair" d="M32 72 Q18 118 30 168 Q40 176 52 166 Q40 128 42 92 Z M128 72 Q142 118 130 168 Q120 176 108 166 Q120 128 118 92 Z" fill="url(#akHair)"/>
       <path class="ak-coat" d="M8 190 Q14 150 50 142 L80 158 L110 142 Q146 150 152 190 Z" fill="url(#akCoat)"/>
       <path class="ak-lapel" d="M50 142 L70 190 L62 190 L42 150 Z M110 142 L90 190 L98 190 L118 150 Z" fill="#2a303b"/>
       <rect x="68" y="118" width="24" height="26" fill="#e4b48e"/>
@@ -41,6 +42,7 @@
         </g>
         <g class="ak-e ak-mad"><path d="M50 86 L70 84" /><path d="M90 84 L110 86" /></g>
       </g>
+      <g class="ak-lash"><path d="M49 82 l-5 -3 M51 79 l-4 -4 M111 82 l5 -3 M109 79 l4 -4" stroke="#1a120d" stroke-width="2" stroke-linecap="round"/></g>
       <g class="ak-brows"><path class="ak-brow-l" d="M48 72 Q58 66 70 71"/><path class="ak-brow-r" d="M90 71 Q102 66 112 72"/></g>
       <path d="M80 90 Q77 102 82 104" stroke="rgba(150,95,60,.6)" stroke-width="2" fill="none" stroke-linecap="round"/>
       <ellipse class="ak-blush" cx="52" cy="100" rx="9" ry="4.5"/><ellipse class="ak-blush" cx="108" cy="100" rx="9" ry="4.5"/>
@@ -70,15 +72,25 @@
     farm: '<ellipse cx="80" cy="42" rx="70" ry="12" fill="#e6c36a"/><path d="M50 42 Q52 10 80 10 Q108 10 110 42 Z" fill="#d9b04f"/><rect x="50" y="32" width="60" height="7" fill="#b0462f"/>',
     souls: '<path d="M46 150 Q80 168 114 150 L120 168 Q80 186 40 168 Z" fill="#77716a" stroke="#34302c" stroke-width="2"/><path d="M52 160 Q80 174 108 160" stroke="#a9a29a" stroke-width="1.6" fill="none"/>',
     // a real Najdi shmagh: red-and-white weave over the head and down the shoulders, face open, black double igal on top
-    najdi: '<path d="M10 186 Q2 64 80 24 Q158 64 150 186 Z" fill="url(#akShm)"/><path d="M10 186 Q2 64 80 24 Q158 64 150 186" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="2"/>',
-    najdiFront: '<path fill-rule="evenodd" fill="url(#akShm)" d="M24 176 Q10 74 36 44 Q56 20 80 20 Q104 20 124 44 Q150 74 136 176 L118 176 L122 100 Q124 70 108 60 Q94 52 80 52 Q66 52 52 60 Q36 70 38 100 L42 176 Z"/>'
-      + '<path d="M38 100 Q36 70 52 60 Q66 52 80 52 Q94 52 108 58 Q124 70 122 100" fill="none" stroke="#f7f3ea" stroke-width="5" stroke-linecap="round"/>'
-      + '<path d="M30 120 Q26 80 38 60 M130 120 Q134 80 122 60" stroke="rgba(0,0,0,.14)" stroke-width="3" fill="none"/>'
-      + '<ellipse cx="80" cy="39" rx="41" ry="9" fill="none" stroke="#141414" stroke-width="5.5"/><ellipse cx="80" cy="47" rx="43" ry="9" fill="none" stroke="#0a0a0a" stroke-width="5.5"/>'
-      + '<path d="M44 43 Q80 57 116 43" stroke="rgba(255,255,255,.18)" stroke-width="1.5" fill="none"/>',
-    pirate: '<path d="M32 58 Q34 22 80 20 Q126 22 128 58 Q80 44 32 58 Z" fill="#b3261e"/><circle cx="62" cy="38" r="3" fill="#fff"/><circle cx="96" cy="34" r="3" fill="#fff"/><path d="M124 50 L146 62 L132 68 Z" fill="#b3261e"/>',
+    najdi: '<path d="M16 188 Q10 118 28 70 Q46 20 80 16 Q114 20 132 70 Q150 118 144 188 Z" fill="url(#akShm)"/><path d="M16 188 Q10 118 28 70 Q46 20 80 16 Q114 20 132 70 Q150 118 144 188" fill="none" stroke="rgba(0,0,0,.16)" stroke-width="2"/>',
+    najdiFront: '<path fill-rule="evenodd" fill="url(#akShm)" d="M30 168 Q16 96 36 54 Q54 16 80 16 Q106 16 124 54 Q144 96 130 168 L116 176 Q120 140 120 100 Q121 72 108 62 Q94 54 80 54 Q66 54 52 62 Q39 72 40 100 Q40 140 44 176 Z"/>'
+      + '<path d="M40 100 Q39 72 52 62 Q66 54 80 54 Q94 54 108 62 Q121 72 120 100" fill="none" stroke="#f7f3ea" stroke-width="4.5" stroke-linecap="round"/>'
+      + '<path d="M34 130 Q28 92 42 66 M126 130 Q132 92 118 66" stroke="rgba(0,0,0,.13)" stroke-width="3" fill="none"/>'
+      + '<ellipse cx="80" cy="36" rx="38" ry="8" fill="none" stroke="#161616" stroke-width="5"/><ellipse cx="80" cy="43" rx="40" ry="8.5" fill="none" stroke="#0b0b0b" stroke-width="5"/>'
+      + '<path d="M46 40 Q80 53 114 40" stroke="rgba(255,255,255,.2)" stroke-width="1.4" fill="none"/>'
+      + '<path d="M80 144 L80 172 M74 148 Q80 152 86 148" stroke="rgba(0,0,0,.18)" stroke-width="2" fill="none"/>',
+    // a captain's tricorne: dark felt, gold trim, a small white skull
+    pirate: '<path d="M22 50 Q40 30 80 34 Q120 30 138 50 Q120 44 80 54 Q40 44 22 50 Z" fill="#1d1712"/><path d="M40 46 Q44 10 80 8 Q116 10 120 46 Q80 36 40 46 Z" fill="#2a2119"/><path d="M22 50 Q40 30 80 34 Q120 30 138 50" stroke="#d9a441" stroke-width="3" fill="none"/><path d="M40 46 Q80 36 120 46" stroke="#d9a441" stroke-width="2.4" fill="none"/><circle cx="80" cy="26" r="6" fill="#f4efe2"/><circle cx="77.6" cy="25" r="1.4" fill="#1d1712"/><circle cx="82.4" cy="25" r="1.4" fill="#1d1712"/><path d="M72 34 L88 40 M88 34 L72 40" stroke="#f4efe2" stroke-width="2" stroke-linecap="round"/>',
     cyber: '<rect x="44" y="76" width="72" height="14" rx="7" fill="rgba(0,240,255,.35)" stroke="#fcee0a" stroke-width="2"/>',
     arcade: '<path d="M44 38 L52 18 L64 30 L80 12 L96 30 L108 18 L116 38 Z" fill="#ffd400"/>',
+    // the night shift: a cartoon bear mask (round ears, muzzle, a stitched seam) with a little guard's flashlight glow
+    night: '<circle cx="42" cy="34" r="16" fill="#7a5233"/><circle cx="118" cy="34" r="16" fill="#7a5233"/><circle cx="42" cy="34" r="8" fill="#5a3a22"/><circle cx="118" cy="34" r="8" fill="#5a3a22"/>'
+      + '<path fill-rule="evenodd" fill="#8a5d3b" d="M34 104 Q30 40 80 36 Q130 40 126 104 Q124 128 80 134 Q36 128 34 104 Z M48 86 Q60 74 72 86 Q60 96 48 86 Z M88 86 Q100 74 112 86 Q100 96 88 86 Z"/>'
+      + '<ellipse cx="80" cy="112" rx="22" ry="15" fill="#c79a6e"/><ellipse cx="80" cy="104" rx="8" ry="5.5" fill="#2a1a10"/><path d="M80 110 L80 118 M72 120 Q80 124 88 120" stroke="#2a1a10" stroke-width="2" fill="none"/>'
+      + '<path d="M52 60 L56 66 M60 58 L62 65 M100 58 L98 65 M108 60 L104 66" stroke="#3a2515" stroke-width="2"/><path d="M36 100 Q80 92 124 100" stroke="rgba(0,0,0,.25)" stroke-width="2" stroke-dasharray="4 4" fill="none"/>',
+    // the magic school: a tall pointed hat with stars and a little moon
+    wizard: '<path d="M24 58 Q80 40 136 58 Q80 70 24 58 Z" fill="#2b2160"/><path d="M42 54 Q60 30 76 -10 Q84 -22 96 -14 Q88 -6 92 6 Q104 34 118 54 Q80 46 42 54 Z" fill="#3a2d80"/>'
+      + '<path d="M44 52 Q80 44 116 52" stroke="#d9a83e" stroke-width="4" fill="none"/><path d="M70 30 l3 6 6 1 -5 4 2 6 -6 -3 -6 3 2 -6 -5 -4 6 -1 z" fill="#ffd76a"/><path d="M94 18 a7 7 0 1 0 6 10 a5 5 0 1 1 -6 -10 z" fill="#f6efd9"/><circle cx="60" cy="44" r="2" fill="#ffd76a"/><circle cx="102" cy="40" r="1.6" fill="#ffd76a"/>',
     // the rest of the themes get their own look too
     glass: '<path d="M34 60 Q34 18 80 16 Q126 18 126 60 Q80 48 34 60 Z" fill="#5a7bd8"/><path d="M34 60 Q80 48 126 60 L126 66 Q80 54 34 66 Z" fill="#3c58a8"/><circle cx="80" cy="14" r="7" fill="#9db4ff"/>',
     aero: '<path d="M46 84 Q46 74 60 74 Q72 74 72 84 Q72 94 60 94 Q46 94 46 84 Z M88 84 Q88 74 100 74 Q114 74 114 84 Q114 94 100 94 Q88 94 88 84 Z" fill="rgba(80,220,255,.55)" stroke="#e8fbff" stroke-width="2.4"/><path d="M72 82 Q80 78 88 82" stroke="#e8fbff" stroke-width="2.4" fill="none"/>',
@@ -87,16 +99,32 @@
     miami: '<path d="M44 80 L74 78 L72 92 Q60 98 48 92 Z M86 78 L116 80 L112 92 Q100 98 88 92 Z" fill="#2b1035"/><path d="M44 80 L116 80" stroke="#ff4fa3" stroke-width="2.6"/><path d="M48 84 L70 84" stroke="#ffb86b" stroke-width="2"/>',
     blocks: '<rect x="32" y="14" width="96" height="44" fill="#6a8f3a"/><rect x="32" y="14" width="96" height="12" fill="#7fb04a"/><rect x="44" y="26" width="10" height="10" fill="#557a2c"/><rect x="96" y="32" width="12" height="10" fill="#557a2c"/><rect x="70" y="40" width="10" height="10" fill="#8a6b45"/>',
   };
+  // your own look for him (Settings, or from the phone): a hat, his colour, boy or girl
+  const HATS = {
+    none: '',
+    cap: '<path d="M36 58 Q36 22 80 20 Q124 22 124 58 Z" fill="var(--ak-col,#c8102e)"/><path d="M36 58 Q80 48 150 60 Q150 66 124 64 Q80 56 36 64 Z" fill="rgba(0,0,0,.35)"/><circle cx="80" cy="20" r="4" fill="rgba(0,0,0,.3)"/>',
+    beanie: '<path d="M32 64 Q30 16 80 14 Q130 16 128 64 Z" fill="var(--ak-col,#c8102e)"/><rect x="30" y="56" width="100" height="12" rx="6" fill="rgba(0,0,0,.25)"/><circle cx="80" cy="12" r="9" fill="#f2f2f2"/>',
+    crown: '<path d="M44 40 L52 14 L66 30 L80 8 L94 30 L108 14 L116 40 Z" fill="#ffd34d" stroke="#b8860b" stroke-width="2"/><circle cx="80" cy="26" r="4" fill="var(--ak-col,#c8102e)"/>',
+    fedora: fedora('#2a2420', 'var(--ak-col,#c8102e)'),
+    phones: phones('#1c1c1c', 'var(--ak-col,#c8102e)'),
+    cat: '<path d="M38 50 L46 14 L66 38 Z M122 50 L114 14 L94 38 Z" fill="url(#akHair)"/><path d="M46 44 L50 24 L60 38 Z M114 44 L110 24 L100 38 Z" fill="#f4a6b8"/>',
+    bow: '<path d="M96 30 L120 18 L118 44 Z M96 30 L74 18 L76 44 Z" fill="var(--ak-col,#ff5fa2)"/><circle cx="96" cy="31" r="5" fill="rgba(0,0,0,.25)"/>',
+  };
+  const look = () => (typeof data !== 'undefined' && data.settings?.akaiLook) || {};
   function dressForTheme() {
     const t = (typeof data !== 'undefined' && data.theme) || 'glass';
-    const back = t === 'najdi';
+    const L = look(), own = L.hat && L.hat !== 'theme' && L.hat in HATS;
+    const back = !own && t === 'najdi';
     for (const root of [el, mini]) {
       if (!root) continue;
-      root.querySelector('.ak-acc-front').innerHTML = back ? (ACC[t + 'Front'] || '') : (ACC[t] || '');
+      root.querySelector('.ak-acc-front').innerHTML = own ? HATS[L.hat] : back ? (ACC[t + 'Front'] || '') : (ACC[t] || '');
       root.querySelector('.ak-acc-back').innerHTML = back ? ACC[t] : '';
+      root.classList.toggle('dress-najdi', back); // thobe instead of the coat and scarf
+      root.classList.toggle('ak-girl', !!L.girl);
+      if (L.color) root.style.setProperty('--ak-col', L.color); else root.style.removeProperty('--ak-col');
+      if (L.hair) root.style.setProperty('--ak-hair', L.hair); else root.style.removeProperty('--ak-hair');
     }
     el.dataset.theme = t;
-    for (const root of [el, mini]) root?.classList.toggle('dress-najdi', back); // thobe instead of the coat and scarf
   }
   // ---------- his seat: bottom-left, where the mic button was. Click him to talk ----------
   const seat = document.getElementById('micBtn');
@@ -144,7 +172,7 @@
     return true;
   }
 
-  window.Akai = {
+  window.Akai = { dress: dressForTheme,
     listen() { if (sulk > 0) return peek('sulk', '…', 2500); peek('listen', 'أسمعك…', 0); },
     say(msg, face = 'happy') { if (sulk > 0) return; peek(face, msg, 3600); },
     fail(msg) { peek('idle', msg, 3600); },
@@ -155,9 +183,37 @@
       peek('happy', h < 5 ? `سهران${n ? ' يا ' + n : ''}؟ 🌙` : h < 12 ? `صباح الخير${n ? ' ' + n : ''} ☀️` : `هلا${n ? ' ' + n : ''} 👋`, 3400);
     },
     isSulking: () => sulk > 0,
-    sync: seatSync,
+    sync: seatSync, HATS: Object.keys(HATS),
     get name() { return nameOf(); },
   };
+  // ---------- Settings → 🎨 شكل أكاي ----------
+  const HAT_NAMES = { theme: '🎭 حسب الثيم', none: '🚫 بدون', cap: '🧢 كاب', beanie: '🧶 طاقية', crown: '👑 تاج', fedora: '🎩 برنيطة', phones: '🎧 سماعة', cat: '🐱 أذان قطة', bow: '🎀 فيونكة' };
+  const COLORS = ['#c8102e', '#2f6fde', '#1f9d55', '#7b3fe4', '#ff5fa2', '#f2a900', '#111111', '#f2f2f2'];
+  const HAIRS = ['', '#6b4a2b', '#c9a15a', '#b03a2e', '#1c2a5a', '#e8e8e8'];
+  window.Akai.setLook = (patch) => { data.settings.akaiLook = { ...look(), ...patch }; save(); dressForTheme(); };
+  window.Akai.lookDialog = () => {
+    const d = document.createElement('dialog'); d.className = 'ak-look'; d.dir = 'rtl';
+    const draw = () => {
+      const L = look();
+      d.innerHTML = `<h2 style="margin:0 0 6px">🎨 شكل ${nameOf()}</h2><div class="akl-prev"></div>
+        <div class="akl-row"><b>الشكل</b><button data-g="0" class="${!L.girl ? 'on' : ''}">👦 ولد</button><button data-g="1" class="${L.girl ? 'on' : ''}">👧 بنت</button></div>
+        <div class="akl-row"><b>اللبس على الراس</b>${Object.entries(HAT_NAMES).map(([k, v]) => `<button data-h="${k}" class="${(L.hat || 'theme') === k ? 'on' : ''}">${v}</button>`).join('')}</div>
+        <div class="akl-row"><b>لونه (الشال والكاب)</b>${COLORS.map((c) => `<button class="akl-sw ${L.color === c ? 'on' : ''}" data-c="${c}" style="background:${c}"></button>`).join('')}<button data-c="">افتراضي</button></div>
+        <div class="akl-row"><b>لون الشعر</b>${HAIRS.map((c) => c ? `<button class="akl-sw ${L.hair === c ? 'on' : ''}" data-hr="${c}" style="background:${c}"></button>` : `<button data-hr="" class="${!L.hair ? 'on' : ''}">افتراضي</button>`).join('')}</div>
+        <div style="display:flex;justify-content:flex-end"><button class="btn primary" data-x>تم</button></div>`;
+      const pv2 = el.querySelector('.ak-face').cloneNode(true); pv2.classList.remove('ak-face'); pv2.classList.add('boo-svg', 'akl-svg'); pv2.classList.toggle('ak-girl', !!L.girl); pv2.style.cssText = el.style.cssText;
+      d.querySelector('.akl-prev').appendChild(pv2);
+      d.querySelectorAll('[data-g]').forEach((b) => b.onclick = () => { window.Akai.setLook({ girl: b.dataset.g === '1' }); draw(); });
+      d.querySelectorAll('[data-h]').forEach((b) => b.onclick = () => { window.Akai.setLook({ hat: b.dataset.h }); draw(); });
+      d.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { window.Akai.setLook({ color: b.dataset.c || undefined }); draw(); });
+      d.querySelectorAll('[data-hr]').forEach((b) => b.onclick = () => { window.Akai.setLook({ hair: b.dataset.hr || undefined }); draw(); });
+      d.querySelector('[data-x]').onclick = () => d.close();
+    };
+    d.onclose = () => d.remove();
+    document.body.appendChild(d); draw(); d.showModal();
+    peek('happy', 'وش رايك فيني؟ 😎', 2500);
+  };
+  window.Akai.look = () => ({ ...look(), hats: HAT_NAMES, colors: COLORS, hairs: HAIRS.filter(Boolean) });
   // Blink now and then
   setInterval(() => { if (el.classList.contains('in') && el.dataset.face !== 'sulk') { el.classList.add('blink'); setTimeout(() => el.classList.remove('blink'), 140); } }, 2600);
   el.onclick = () => (sulk > 0 ? peek('sulk', 'لا تكلمني 😤', 2500) : peek('happy', `وش تبي؟ قل "${nameOf()}" وبعدها طلبك 😄`, 3200));

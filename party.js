@@ -180,7 +180,7 @@
       <div class="pp-who">${names.length ? names.map((n) => `<span>👤 ${esc(n)}</span>`).join('') : '<i>محد دخل للحين</i>'}</div>
       <button class="btn ghost pp-stop">⏹ إنهاء المتابعة</button>`;
     p.querySelector('.pp-x').onclick = () => p.remove();
-    p.querySelector('.pp-copy').onclick = () => { navigator.clipboard.writeText(party.link).then(() => toastP('نسخت الرابط')); };
+    p.querySelector('.pp-copy').onclick = async () => { const ok = api.copyText ? await api.copyText(party.link) : await navigator.clipboard.writeText(party.link).then(() => true, () => false); toastP(ok ? 'نسخت الرابط: أرسله لهم' : 'ما قدرت أنسخ'); };
     p.querySelector('.pp-share').onchange = (e) => shareScreen(e.target.checked);
     p.querySelector('.pp-stop').onclick = () => { stop(); p.remove(); };
   }
@@ -188,12 +188,17 @@
     let p = $('#partyPanel');
     if (p) { p.remove(); return; }
     p = document.createElement('div'); p.id = 'partyPanel';
-    $('#webWrap').appendChild(p);
+    // on the page itself (not inside the watch area), so nothing - fullscreen video, the site, a theme - can hide it
+    document.body.appendChild(p);
     drawPanel();
+    toastP('👥 تابع معي: صوّر الباركود أو أرسل الرابط');
   }
 
   async function start() {
-    if (party) return openPanel();
+    try { return await startInner(); } catch (e) { console.warn('[party] start failed', e); toastP('تعذر تشغيل تابع معي: ' + (e?.message || e)); }
+  }
+  async function startInner() {
+    if (party) { if (!$('#partyPanel')) openPanel(); else drawPanel(); return; }
     // the same link every time (so a friend's page reconnects by itself after the app restarts)
     let id = (typeof data !== 'undefined' && data.settings?.partyId) || newId();
     try { data.settings.partyId = id; save(); } catch {}

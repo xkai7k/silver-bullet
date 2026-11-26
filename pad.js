@@ -38,7 +38,7 @@
     }
     if (all.length > 6) all.length = 6;
     chips.innerHTML = all.map((d) => `<span class="bchip ${d.pct != null && d.pct <= 20 ? 'low' : ''}" title="${esc(d.name)}${d.charging ? ' (يشحن)' : ''}">
-      ${iconFor(d.name)}${d.wired ? ' 🔌' : d.pct == null ? '' : d.approx ? ` ${d.pct >= 100 ? 'ممتلئ' : d.pct >= 60 ? 'نص' : d.pct >= 25 ? 'قليل' : 'فاضي'}` : ` ${d.pct}%`}${d.charging ? '⚡' : ''}</span>`).join('');
+      ${iconFor(d.name)}${d.wired ? ' 🔌' : d.pct == null ? '' : d.approx ? ` ~${d.pct}%` : ` ${d.pct}%`}${d.charging ? '⚡' : ''}</span>`).join('');
   }
   // ---------- low battery: one alert at 30% (again at 15%), bottom-left, even while you're in a game ----------
   // remembered between launches, so opening the app again doesn't repeat the same alert
@@ -53,7 +53,8 @@
       if (level > w) {
         warned[k] = level; keepWarned();
         const msg = `${d.name}: باقي ${d.pct}% — اشحنه ${level === 2 ? 'الحين' : 'قريب'}`;
-        try { new Notification('🔋 الشحن قرب يخلص', { body: msg, silent: false }); } catch {}
+        // over a game: a small note in the bottom-left that shows on top of it; in the app: the usual card
+        if (!document.hasFocus() && pv.overlayNote) pv.overlayNote(iconFor(d.name), 'الشحن قرب يخلص', `${d.name} · ${d.pct}%`); else try { new Notification('🔋 الشحن قرب يخلص', { body: msg, silent: false }); } catch {}
         let box = document.getElementById('lowBat');
         if (!box) { box = document.createElement('div'); box.id = 'lowBat'; document.body.appendChild(box); }
         box.innerHTML = `<span class="lb-ico">${iconFor(d.name)}</span><div><b>الشحن قرب يخلص</b><small>${esc(d.name)} · ${d.pct}%</small></div><i style="--p:${d.pct}%"></i>`;

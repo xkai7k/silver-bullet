@@ -4,7 +4,7 @@
   --bg: radial-gradient(1200px 700px at 80% -10%, #2b3a67 0%, transparent 60%),
         radial-gradient(900px 600px at 0% 110%, #3a1f5c 0%, transparent 60%), #0b0f17;
   --text: #f2f4fa;
-  --muted: rgba(242, 244, 250, .6);
+  --muted: rgba(242, 244, 250, 0.74);
   --card: rgba(255, 255, 255, .07);
   --card-hover: rgba(255, 255, 255, .13);
   --border: rgba(255, 255, 255, .14);
@@ -348,7 +348,7 @@ dialog textarea {
     repeating-linear-gradient(88deg, transparent 0 60px, rgba(0,0,0,.12) 60px 63px, transparent 63px 140px),
     linear-gradient(180deg, #7a4a28 0%, #5a341b 55%, #3d2210 100%);
   --text: #f7e8cc;
-  --muted: rgba(247, 232, 204, .65);
+  --muted: rgba(247, 232, 204, 0.74);
   --card: linear-gradient(180deg, rgba(60, 34, 16, .78), rgba(40, 22, 10, .78));
   --card-hover: linear-gradient(180deg, rgba(85, 50, 24, .85), rgba(55, 30, 14, .85));
   --border: rgba(217, 164, 65, .55);
@@ -373,7 +373,7 @@ dialog textarea {
     repeating-linear-gradient(-45deg, rgba(212, 175, 55, .045) 0 1px, transparent 1px 26px),
     #0c0a12;
   --text: #f4e6c3;
-  --muted: rgba(244, 230, 195, .6);
+  --muted: rgba(244, 230, 195, 0.74);
   --card: rgba(18, 14, 26, .78);
   --card-hover: rgba(34, 26, 44, .88);
   --border: rgba(212, 175, 55, .55);
@@ -397,7 +397,7 @@ dialog textarea {
     linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px) 0 0 / 40px 100%,
     #07060d;
   --text: #ecfbff;
-  --muted: rgba(236, 251, 255, .6);
+  --muted: rgba(236, 251, 255, 0.74);
   --card: rgba(10, 8, 22, .7);
   --card-hover: rgba(30, 14, 46, .8);
   --border: rgba(0, 240, 255, .55);
@@ -764,7 +764,7 @@ body[data-theme="arcade"] .topbar h1 { font-size: 22px; color: #ffe94d; text-sha
     radial-gradient(900px 600px at 50% -20%, rgba(200, 170, 110, .12), transparent 60%),
     linear-gradient(180deg, #0d0c0b, #070605);
   --text: #e9dfc8;
-  --muted: rgba(233, 223, 200, .55);
+  --muted: rgba(233, 223, 200, 0.74);
   --card: rgba(20, 18, 15, .85);
   --card-hover: rgba(36, 30, 22, .9);
   --border: rgba(196, 160, 90, .45);
@@ -1103,6 +1103,8 @@ body:has(#spDockArea) main { padding-bottom: 0; overflow: hidden; }
 #emuProg.mini .ep-list { display: none; }
 .ep-row.wait small { opacity: .55; }
 #emuProg[hidden] { display: none; }
+#emuProg .ep-hide { left: 40px; }
+#emuChip { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--panel-text); font: inherit; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
 #emuProg b { display: block; margin-bottom: 8px; }
 .ep-row { position: relative; display: flex; justify-content: space-between; padding: 5px 0 7px; }
 .ep-row i { position: absolute; left: 0; right: 0; bottom: 2px; height: 3px; border-radius: 3px; background: linear-gradient(to left, var(--accent) var(--p), rgba(127,127,127,.25) var(--p)); }
@@ -1484,7 +1486,11 @@ body.afk::after { content: attr(data-clock); }
 }
 [data-theme="pirate"] .topbar h1, [data-theme="pirate"] .shelf-card .name { text-shadow: 2px 2px 0 #3b2412, 0 0 12px rgba(0,0,0,.35); }
 [data-theme="pirate"] :is(.tile .cover, .shelf-card) { border: 3px solid #d9a441; box-shadow: 0 0 0 2px #3b2412, var(--shadow); }
-.scene-pirate .pirate-sun { position: absolute; top: 7vh; right: 14vw; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, #fff6c9, #ffd35c 60%, rgba(255,211,92,0) 72%); box-shadow: 0 0 120px 40px rgba(255, 220, 120, .45); }
+.scene-pirate .pirate-sun { position: absolute; bottom: 31vh; left: 30vw; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, #fff3c4, #ffc24a 60%, rgba(255,194,74,0) 72%); box-shadow: 0 0 60px 14px rgba(255, 200, 100, .35); }
+/* pages: the sea stays, but calmer so text and tiles read clearly */
+body[data-theme="pirate"]:not(.home) .scene-pirate > :not(.wave) { opacity: .55; }
+body[data-theme="pirate"]:not(.home) #view { background: linear-gradient(180deg, rgba(8,40,60,.0), rgba(8,40,60,.28) 30%); border-radius: 18px; }
+.scene-pirate .sway { transform-origin: 820px 750px !important; }
 .scene-pirate .cloud { left: -260px; width: 240px; height: 70px; border-radius: 60px; background: rgba(255,255,255,.9); filter: blur(1px); animation: cloudMove linear infinite; }
 .scene-pirate .cloud::after { content: ''; position: absolute; width: 120px; height: 90px; border-radius: 50%; background: inherit; top: -40px; left: 50px; }
 .scene-pirate .gull, .scene-calm .bird { left: -40px; font-size: 26px; color: rgba(30, 40, 50, .7); animation: gullFly linear infinite; }
@@ -1502,7 +1508,7 @@ body.afk::after { content: attr(data-clock); }
   --title-font: 'Reem Kufi', 'Aref Ruqaa', sans-serif;
   --bg: linear-gradient(180deg, #1b1033 0%, #6b2f3f 45%, #d98a4a 72%, #c8925a 100%);
   --text: #fff3e0;
-  --muted: rgba(255, 243, 224, .72);
+  --muted: rgba(255, 243, 224, 0.74);
   --card: linear-gradient(180deg, rgba(120, 66, 34, .82), rgba(78, 40, 18, .86));
   --card-hover: linear-gradient(180deg, rgba(150, 86, 44, .9), rgba(96, 50, 22, .9));
   --border: rgba(255, 207, 122, .6);
@@ -1537,7 +1543,7 @@ body.afk::after { content: attr(data-clock); }
     repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0 2px, transparent 2px 9px, rgba(255,255,255,.015) 9px 10px, transparent 10px 23px),
     linear-gradient(180deg, #2a1a12 0%, #1a100b 60%, #0f0906 100%);
   --text: #eadcc0;
-  --muted: rgba(234, 220, 192, .6);
+  --muted: rgba(234, 220, 192, 0.74);
   --card: linear-gradient(180deg, rgba(48, 30, 20, .9), rgba(30, 18, 12, .92));
   --card-hover: linear-gradient(180deg, rgba(66, 42, 28, .95), rgba(40, 24, 16, .95));
   --border: rgba(184, 145, 61, .55);
@@ -1795,7 +1801,7 @@ body.reordering, body.reordering * { cursor: grabbing !important; user-select: n
 #partyBar .pb-dot { width: 9px; height: 9px; border-radius: 50%; background: #ff6b6b; flex: none; }
 #partyBar .pb-dot.on { background: #3ecf8e; }
 #partyBar .pb-live { margin-inline-start: auto; padding: 3px 10px; border-radius: 999px; background: #3a1518; color: #ffb3b3; font-size: 12px; }
-#partyPanel { position: absolute; top: 64px; inset-inline-end: 16px; z-index: 30; width: 340px; max-width: calc(100vw - 32px); max-height: calc(100vh - 90px); overflow: auto; padding: 16px; border-radius: 18px; background: var(--bg, #0d0f14); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 18px 50px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 10px; }
+#partyPanel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 99990; border: 2px solid var(--accent) !important; width: 340px; max-width: calc(100vw - 32px); max-height: calc(100vh - 90px); overflow: auto; padding: 16px; border-radius: 18px; background: var(--bg, #0d0f14); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 18px 50px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 10px; }
 #partyPanel .pp-head { display: flex; align-items: center; justify-content: space-between; font-size: 17px; }
 #partyPanel .pp-qr { background: #fff; border-radius: 12px; padding: 10px; width: 200px; height: 200px; align-self: center; }
 #partyPanel .pp-qr svg { width: 100%; height: 100%; display: block; }
@@ -1956,3 +1962,207 @@ dialog.mods-pick { width: min(560px, 92vw); }
 /* Akai in the Najdi theme: white thobe under the shmagh */
 .dress-najdi .ak-scarf, .dress-najdi .ak-scarf-tail, .dress-najdi .ak-lapel { display: none; }
 .dress-najdi .ak-coat { fill: #f3efe6; }
+
+/* Rest: a game or a full-screen video is in front — nothing moves, nothing draws in the background */
+body.sb-rest *, body.sb-rest *::before, body.sb-rest *::after { animation-play-state: paused !important; transition: none !important; }
+body.sb-rest #scene, body.sb-rest .scene, body.sb-rest .scene-svg, body.sb-rest .page-art, body.sb-rest #pageArt { visibility: hidden !important; }
+body.sb-rest:not(.sb-rest-watch) #view { content-visibility: hidden; }
+body.sb-rest-watch #webWrap * { animation-play-state: running !important; }
+body.sb-rest *:not(#webWrap *), body.wv-full *:not(#webWrap *) { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+body.wv-full #scene, body.wv-full .scene { display: none !important; }
+
+/* Easy to read on every theme: titles and small text get a soft halo in the opposite colour of the letters,
+   so they stay clear over a bright sky, a sun, palm trees or a busy background */
+:root { --halo: 0 1px 2px rgba(0,0,0,.85), 0 0 10px rgba(0,0,0,.55); }
+[data-theme="aero"], [data-theme="classic"], [data-theme="calm"], [data-theme="farm"], [data-theme="plain"] { --halo: 0 1px 1px rgba(255,255,255,.9), 0 0 8px rgba(255,255,255,.7); }
+#title, #subtitle, .group-title, .group-title small, .section-title, .shelf-info, .recent .label, #view > .hint, #view .empty, .page-head h2, .tabs-row button:not(.on), .gt-tabs button:not(.on), .sec-title, .shelf-title, .resume-h { text-shadow: var(--halo); }
+.group-title small, #subtitle { font-weight: 600; }
+
+/* Mixed Arabic / English text: every line reads in its own direction (English left-to-right, Arabic right-to-left) */
+p, .hint, li, label, .toast, #toast, small, .md-row em, .lg-line, dd, .sub, .label, .ep-t, .tip, .desc, .note, .msg { unicode-bidi: plaintext; }
+
+/* Profile (tap your picture, top right) */
+.avatar-btn.empty { display: grid; place-items: center; background: rgba(127,127,127,.18); border: 2px dashed var(--muted); font-size: 20px; }
+.profile-dlg { width: min(640px, 94vw); }
+.pf-head { display: flex; gap: 18px; align-items: center; }
+.pf-av { width: 104px; height: 104px; border-radius: 50%; overflow: hidden; border: 3px solid var(--accent); background: rgba(127,127,127,.15); cursor: pointer; padding: 0; flex: none; display: grid; place-items: center; color: inherit; font-size: 38px; }
+.pf-av img { width: 100%; height: 100%; object-fit: cover; }
+.pf-av small { display: block; font-size: 12px; }
+.pf-id { flex: 1; display: grid; gap: 8px; }
+.pf-name { font-size: 22px; font-weight: 800; }
+.pf-bio { resize: none; font: inherit; }
+.pf-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0 6px; }
+.pf-stats div { background: rgba(127,127,127,.12); border-radius: 14px; padding: 10px; text-align: center; }
+.pf-stats b { display: block; font-size: 26px; }
+.pf-stats small { opacity: .75; }
+.profile-dlg h3 { margin: 14px 0 8px; font-size: 16px; }
+.profile-dlg h3 small { opacity: .6; font-weight: 500; }
+.pf-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.pf-g { position: relative; width: 84px; aspect-ratio: 3/4; border-radius: 10px; overflow: hidden; cursor: pointer; background: rgba(127,127,127,.15); }
+.pf-g img, .pf-g .cover { width: 100%; height: 100%; object-fit: cover; }
+.pf-tier { position: absolute; top: 4px; right: 4px; font-style: normal; font-weight: 800; background: #ffbf7f; color: #111; border-radius: 6px; padding: 0 6px; }
+.pf-add { width: 84px; aspect-ratio: 3/4; border-radius: 10px; border: 2px dashed var(--muted); background: none; color: inherit; font-size: 28px; cursor: pointer; }
+
+/* Menu: restart / close at the bottom */
+.dr-end { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); display: grid; gap: 6px; }
+.dr-end .danger { color: #ff7a7a; }
+/* Closing: Akai's "boo!" */
+#byeScreen.boo { position: fixed; inset: 0; z-index: 99999; display: grid; place-items: center; align-content: center; background: radial-gradient(circle at 50% 45%, rgba(20,10,30,.6), rgba(0,0,0,.96)); opacity: 0; transition: opacity .15s; }
+#byeScreen.boo.show { opacity: 1; }
+.boo-face { width: 120px; height: 140px; transform: scale(.2) rotate(-12deg); transition: transform .45s cubic-bezier(.2,1.6,.4,1); }
+#byeScreen.boo.show .boo-face { transform: scale(3.2) rotate(0); animation: booShake .12s 5 .4s; }
+#byeScreen.boo.laugh .boo-face { transform: scale(1.4); transition: transform .4s ease; }
+.boo-svg { width: 100%; height: 100%; }
+.boo-svg .ak-mouth, .boo-svg .ak-m { }
+.boo-t { font-size: 72px; margin: 40px 0 0; color: #fff; text-shadow: 0 0 30px #ff3b3b; transform: scale(.6); opacity: 0; transition: .25s .3s; }
+#byeScreen.boo.show .boo-t { transform: scale(1); opacity: 1; }
+#byeScreen.boo.laugh .boo-t { opacity: 0; }
+.boo-s { font-size: 24px; color: #fff; opacity: 0; transition: .3s; margin-top: -40px; }
+#byeScreen.boo.laugh .boo-s { opacity: 1; }
+@keyframes booShake { 0%,100% { translate: 0 0; } 25% { translate: -6px 3px; } 75% { translate: 6px -3px; } }
+.boo-svg .ak-e, .boo-svg .ak-mouths > *, .boo-svg .ak-sweat, .boo-svg .ak-anger, .boo-svg .ak-waves { display: none; }
+.boo-svg .ak-mouths > * { fill: none; stroke: #7a3b2a; stroke-width: 2.6; stroke-linecap: round; }
+.boo-svg .ak-mouths .mo { fill: #5a1f1a; stroke: #3a1410; } .boo-svg .ak-mouths .th { fill: #fff; stroke: none; } .boo-svg .ak-mouths .tg { fill: #e0727a; stroke: none; }
+.boo-svg .ak-happy path { fill: none; stroke: #1a120d; stroke-width: 3; stroke-linecap: round; }
+.boo-svg .ak-brows path { fill: none; stroke: #20150f; stroke-width: 3.4; stroke-linecap: round; }
+.boo-svg .ak-blush { fill: #ff8fa8; opacity: .8; }
+.boo-svg .ak-scarf, .boo-svg .ak-scarf-tail { fill: var(--ak-col, #c8102e); }
+.akl-svg .ak-open, .akl-svg .m-happy { display: block !important; }
+#byeScreen.boo:not(.laugh) .boo-svg .ak-open, #byeScreen.boo:not(.laugh) .boo-svg .m-talk { display: block; }
+#byeScreen.boo.laugh .boo-svg .ak-happy, #byeScreen.boo.laugh .boo-svg .m-happy { display: block; }
+
+/* calendar card hover: live countdown under the card */
+.cal-tip{position:fixed;z-index:9000;min-width:200px;max-width:320px;padding:8px 12px;border-radius:12px;background:rgba(12,14,20,.92);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.12);pointer-events:none;font-size:13px;animation:calTip .15s ease-out}
+.cal-tip .cdt-row{display:flex;justify-content:space-between;gap:14px;padding:3px 0}
+.cal-tip .cdt-row b{font-weight:600;unicode-bidi:plaintext}
+.cal-tip .cdt-row span{opacity:.85;font-variant-numeric:tabular-nums}
+@keyframes calTip{from{opacity:0;transform:translateY(-4px)}}
+
+/* Akai: your own look (Settings → شكل أكاي, or from the phone) */
+#akai .ak-scarf, #akai .ak-scarf-tail, .ak-mini .ak-scarf, .ak-mini .ak-scarf-tail { fill: var(--ak-col, #c8102e); }
+.ak-girl-hair, .ak-lash { display: none; }
+.ak-girl .ak-girl-hair, .ak-girl .ak-lash { display: inline; }
+.ak-girl .ak-blush { opacity: .75; }
+[style*="--ak-hair"] .ak-hair, [style*="--ak-hair"] .ak-hair-back, [style*="--ak-hair"] .ak-girl-hair { fill: var(--ak-hair); }
+dialog.ak-look { width: min(520px, 92vw); border-radius: 20px; padding: 20px; border: 1px solid var(--line, #262b37); background: var(--bg, #0d0f14); color: var(--text, #fff); }
+.ak-look .akl-prev { display: flex; justify-content: center; }
+.ak-look .akl-prev svg { width: 150px; height: 178px; }
+.ak-look .akl-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; align-items: center; }
+.ak-look .akl-row b { width: 100%; font-size: 14px; opacity: .85; }
+.ak-look .akl-row button { padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line, #333); background: rgba(255,255,255,.05); color: inherit; font: inherit; cursor: pointer; }
+.ak-look .akl-row button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.ak-look .akl-sw { width: 30px; height: 30px; padding: 0 !important; border-radius: 50% !important; }
+
+/* "بدون ثيم": plain and light, nothing moving, plays no tune */
+[data-theme="plain"] {
+  --font: 'Segoe UI', 'Tajawal', Tahoma, sans-serif;
+  --bg: #f5f6f8;
+  --text: #1b1f27;
+  --muted: rgba(27, 31, 39, .72);
+  --card: #ffffff;
+  --card-hover: #eef1f6;
+  --border: rgba(20, 30, 50, .12);
+  --accent: #2563eb;
+  --accent-text: #fff;
+  --radius: 14px;
+  --blur: none;
+  --shadow: 0 2px 10px rgba(20, 30, 50, .08);
+  --tint: rgba(245, 246, 248, .9);
+  --gloss: none;
+  --bevel: none;
+  --panel: #ffffff;
+  --panel-text: #1b1f27;
+  --title-font: var(--font);
+  --halo: none;
+}
+body[data-theme="plain"] .scene, body[data-theme="plain"] #scene { display: none !important; }
+body[data-theme="plain"] .shelf-card .meta { text-shadow: 0 1px 6px rgba(0,0,0,.6); }
+
+/* ---------- المناوبة الليلية (light horror) ---------- */
+[data-theme="night"] {
+  --font: 'Tajawal', 'Segoe UI', sans-serif;
+  --title-font: 'Rakkas', 'Lalezar', sans-serif;
+  --bg: #0b0a0d;
+  --text: #f1ece4;
+  --muted: rgba(241, 236, 228, .74);
+  --card: rgba(26, 22, 30, .88);
+  --card-hover: rgba(40, 33, 44, .92);
+  --border: rgba(255, 90, 74, .35);
+  --accent: #ff5a4a;
+  --accent-text: #120c0c;
+  --radius: 10px;
+  --blur: none;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  --tint: linear-gradient(180deg, rgba(8, 6, 10, .6), rgba(8, 6, 10, .9));
+  --gloss: none; --bevel: none;
+  --panel: #151118; --panel-text: #f1ece4;
+}
+[data-theme="night"] .topbar h1, [data-theme="night"] .shelf-card .name { text-shadow: 0 0 10px rgba(255, 90, 74, .55), 2px 2px 0 #000; letter-spacing: 1px; }
+.scene-night .nt-lamp { position: absolute; top: 0; left: 50%; width: 900px; height: 620px; transform: translateX(-50%); background: radial-gradient(ellipse at 50% 0, rgba(255, 236, 170, .22), transparent 65%); animation: ntFlicker 7s steps(1) infinite; pointer-events: none; z-index: 2; }
+@keyframes ntFlicker { 0%, 100% { opacity: 1; } 41% { opacity: .2; } 42% { opacity: 1; } 43% { opacity: .35; } 45% { opacity: 1; } 78% { opacity: .55; } 79% { opacity: 1; } }
+.scene-night .nt-dark { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 40%, transparent 30%, rgba(0,0,0,.7) 90%); z-index: 3; pointer-events: none; }
+.scene-night .nt-eyes { opacity: 0; animation: ntEyes 11s infinite; }
+.scene-night .nt-e2 { animation-duration: 17s; animation-delay: -6s; }
+@keyframes ntEyes { 0%, 70%, 100% { opacity: 0; } 74%, 84% { opacity: .9; } 76%, 80% { opacity: 0; } 78% { opacity: .9; } }
+.scene-night .nt-screen { animation: ntScreen 1.2s steps(2) infinite; }
+@keyframes ntScreen { 50% { fill: #12261a; } }
+.scene-night .nt-rec { animation: ntScreen 1s steps(1) infinite; }
+.scene-night .nt-static { position: absolute; inset: 0; opacity: .05; z-index: 4; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.5) 0 1px, transparent 1px 3px); animation: ntStatic .3s steps(3) infinite; }
+@keyframes ntStatic { 50% { transform: translateY(1px); } }
+
+/* ---------- مدرسة السحر ---------- */
+[data-theme="wizard"] {
+  --font: 'Tajawal', 'Segoe UI', sans-serif;
+  --title-font: 'Cinzel', 'Aref Ruqaa', serif;
+  --bg: linear-gradient(180deg, #0c0a24 0%, #1d1748 55%, #2a1f52 100%);
+  --text: #f6efd9;
+  --muted: rgba(246, 239, 217, .76);
+  --card: linear-gradient(180deg, rgba(42, 30, 80, .88), rgba(24, 18, 52, .9));
+  --card-hover: linear-gradient(180deg, rgba(60, 44, 110, .92), rgba(34, 26, 70, .92));
+  --border: rgba(222, 180, 90, .55);
+  --accent: #d9a83e;
+  --accent-text: #1a1230;
+  --radius: 14px;
+  --blur: none;
+  --shadow: 0 10px 30px rgba(5, 3, 20, .55), inset 0 1px 0 rgba(255, 220, 150, .15);
+  --tint: linear-gradient(180deg, rgba(12, 10, 36, .5), rgba(12, 10, 36, .85));
+  --gloss: none; --bevel: none;
+  --panel: #1d1745; --panel-text: #f6efd9;
+}
+[data-theme="wizard"] .topbar h1, [data-theme="wizard"] .shelf-card .name { text-shadow: 0 0 14px rgba(217, 168, 62, .6); }
+[data-theme="wizard"] :is(.tile .cover, .shelf-card) { border: 2px solid rgba(217, 168, 62, .7); }
+.scene-wizard .wz-moon { position: absolute; top: 8vh; left: 12vw; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle at 40% 40%, #fffbe8, #e9dfb8 60%, #cfc39a); box-shadow: 0 0 80px 20px rgba(240, 230, 190, .25); }
+.scene-wizard .wz-win { animation: wzWin 4s ease-in-out infinite alternate; }
+@keyframes wzWin { to { opacity: .55; } }
+.scene-wizard .candle { width: 8px; height: 26px; border-radius: 2px; background: linear-gradient(#f4ecd6, #d8cba8); animation: wzFloat ease-in-out infinite alternate; }
+.scene-wizard .candle::before { content: ''; position: absolute; left: 50%; top: -12px; width: 8px; height: 12px; transform: translateX(-50%); border-radius: 50% 50% 40% 40%; background: radial-gradient(circle at 50% 70%, #fff6c0, #ffb347 60%, transparent 70%); box-shadow: 0 0 18px 6px rgba(255, 190, 90, .35); animation: wzFlame .4s ease-in-out infinite alternate; }
+@keyframes wzFloat { from { transform: translateY(-8px); } to { transform: translateY(10px); } }
+@keyframes wzFlame { to { transform: translateX(-50%) scaleY(1.15); } }
+.scene-wizard .wz-shoot { top: 10vh; left: 70vw; width: 160px; height: 2px; background: linear-gradient(90deg, transparent, #fff); transform: rotate(-20deg); opacity: 0; animation: wzShoot 9s ease-in infinite; }
+@keyframes wzShoot { 0%, 85% { opacity: 0; transform: translate(0,0) rotate(-20deg); } 88% { opacity: 1; } 100% { opacity: 0; transform: translate(-420px, 150px) rotate(-20deg); } }
+
+/* the safety warning */
+dialog.risk-dlg { width: min(480px, 92vw); padding: 26px; border-radius: 22px; border: 2px solid #ff8a3d; background: var(--panel, #151821); color: var(--panel-text, #fff); text-align: center; box-shadow: 0 30px 90px rgba(0,0,0,.7); }
+dialog.risk-dlg::backdrop { background: rgba(40, 10, 0, .55); backdrop-filter: blur(3px); }
+.risk-dlg .rk-ic { font-size: 54px; line-height: 1; }
+.risk-dlg h2 { margin: 10px 0 8px; }
+.risk-dlg p { line-height: 1.8; opacity: .9; }
+.risk-dlg .check { justify-content: center; margin: 10px 0; }
+.risk-dlg .actions { display: flex; gap: 10px; justify-content: center; }
+
+dialog.drive-pick { width: min(460px, 92vw); padding: 22px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel); color: var(--panel-text); }
+.drive-pick .dp-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.drive-pick .dp { display: grid; grid-template-columns: 50px 1fr; grid-template-rows: auto auto; gap: 4px 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: rgba(127,127,127,.08); color: inherit; font: inherit; cursor: pointer; text-align: start; }
+.drive-pick .dp:hover, .drive-pick .dp:focus-visible { border-color: var(--accent); }
+.drive-pick .dp b { grid-row: span 2; font-size: 20px; }
+.drive-pick .dp i { height: 8px; border-radius: 6px; background: linear-gradient(90deg, var(--accent) var(--p), rgba(127,127,127,.25) var(--p)); }
+.drive-pick .dp small { opacity: .8; }
+
+/* dialogs: soft text follows the dialog's own colours (some themes have light pages and dark dialogs, or the reverse) */
+dialog { --muted: color-mix(in srgb, var(--panel-text) 74%, transparent); }
+#showDlg { width: min(780px, 94vw); }
+#showDlg .ep { background: color-mix(in srgb, var(--panel-text) 6%, transparent); border-color: color-mix(in srgb, var(--panel-text) 16%, transparent); }
+#showDlg .ep-t { font-weight: 600; font-size: 15px; line-height: 1.5; }
+#showDlg .ep-n { color: var(--panel-text); opacity: .7; }
+#showDlg .ep.seen { opacity: .78; }
+#showDlg .ep.seen .ep-p { color: #4ade80; font-weight: 800; }

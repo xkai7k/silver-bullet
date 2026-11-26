@@ -2,6 +2,7 @@
 # plus Xbox controllers on the wireless adapter (XInput). Prints a JSON array of { name, battery, cls }.
 $ErrorActionPreference = 'SilentlyContinue'
 $out = New-Object System.Collections.ArrayList
+$xiSeen = $false
 $key = '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2'
 # Only devices that can be wireless: Bluetooth ones, and named mice / keyboards / headsets / controllers on receivers
 $devs = Get-PnpDevice -PresentOnly | Where-Object {
@@ -22,9 +23,10 @@ try {
   for ($i = 0; $i -lt 4; $i++) {
     $b = New-Object SB.XI+BAT
     $rc = [SB.XI]::XInputGetBatteryInformation($i, 0, [ref]$b)
+    if ($rc -eq 0) { $xiSeen = $true }
     if ($rc -eq 0 -and $b.Type -eq 1) { [void]$out.Add([pscustomobject]@{ name = "Xbox Controller $($i + 1)"; battery = $null; cls = 'XInput'; wired = $true }); continue }  # on a cable: charging, no level to tell
     if ($rc -eq 0 -and $b.Type -ge 2 -and $b.Type -ne 255) {
-      $pct = @(5, 25, 60, 100)[[Math]::Min(3, $b.Level)]  # XInput only knows empty / low / medium / full
+      $pct = @(10, 40, 75, 100)[[Math]::Min(3, $b.Level)]  # XInput only knows empty / low / medium / full: shown as about 10 / 40 / 75 / 100 %
       [void]$out.Add([pscustomobject]@{ name = "Xbox Controller $($i + 1)"; battery = $pct; cls = 'XInput'; approx = $true })
     }
   }
@@ -61,6 +63,8 @@ foreach ($o in $out) {
 }
 # an LE pad Windows lists but that is switched off: not shown
 if ($live.Count -or $infos) { $out = [System.Collections.ArrayList]@($out | Where-Object { $_.cls -eq 'XInput' -or $_.live -or $_.name -notmatch '(?i)xbox|controller|gamepad' -or ($live.Keys | Where-Object { $_ -and $_.Length -gt 3 -and $_ -like '*controller*' }) }) }
+# no Xbox pad answers XInput: it is switched off, so Windows' old Bluetooth number for it is not shown
+if (-not $xiSeen) { $out = [System.Collections.ArrayList]@($out | Where-Object { $_.name -notmatch '(?i)xbox' }) }
 # Windows keeps an Xbox pad's Bluetooth battery from when it paired (it shows 75% for ever), and lists the pad twice:
 # when XInput can read the pad itself, that is the true level, so the Bluetooth copies go
 if (@($out | Where-Object { $_.cls -eq 'XInput' }).Count) { $out = [System.Collections.ArrayList]@($out | Where-Object { $_.cls -eq 'XInput' -or $_.name -notmatch '(?i)xbox|controller|gamepad' }) }

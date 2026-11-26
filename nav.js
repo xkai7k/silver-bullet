@@ -224,7 +224,7 @@
   function poll() {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
     if (pads.length && document.hasFocus()) {
-      if (!padSeen) { padSeen = true; toast('🎮 اليد متصلة: الأسهم للتنقل، A تشغيل، B رجوع'); pv.log('gamepad: ' + pads[0].id); }
+      if (!padSeen) { padSeen = true; toast(/054c|playstation|dualsense|dualshock|wireless controller/i.test(pads[0].id) ? '🎮 يد بلايستيشن متصلة: الأسهم للتنقل، ✕ تشغيل، ○ رجوع' : '🎮 اليد متصلة: الأسهم للتنقل، A تشغيل، B رجوع'); pv.log('gamepad: ' + pads[0].id); }
       const now = performance.now();
       const pressed = {};
       const BTN = btnMap();
@@ -243,7 +243,8 @@
         } else delete held[a];
       }
     }
-    requestAnimationFrame(poll);
+    // a pad in hand and the app in front: every frame; otherwise a few times a second (no pad, or a game in front: nothing to do)
+    if (pads.length && document.hasFocus() && !window.SB_PAUSED?.()) requestAnimationFrame(poll); else setTimeout(poll, pads.length ? 250 : 800);
   }
   window.addEventListener('gamepadconnected', () => { padSeen = false; });
   // Mouse side buttons

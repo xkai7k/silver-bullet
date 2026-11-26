@@ -53,6 +53,12 @@
     vintage: { name: 'غرفة قديمة', bpm: 72, root: 48, scale: 'minor', prog: [0, 5, 3, 4], bars: 2, rev: 0.5, swing: 0.2, sevenths: true,
       piano: { gain: 0.07, prob: 0.2, oct: 0 }, bass: { wave: 'triangle', gain: 0.1, pat: 'R.......5.......', cutoff: 700 },
       drums: { hat: 'x..x..x.x..x..x.', hatGain: 0.012, brush: true } },
+    night: { name: 'المناوبة الليلية', bpm: 58, root: 41, scale: 'phrygian', prog: [0, 1, 0, 6], bars: 2, rev: 0.85, delay: 0.4,
+      pad: { wave: 'sawtooth', gain: 0.035, cutoff: 500, attack: 4, voices: 3 }, bell: { prob: 0.07, gain: 0.05, oct: 1 },
+      bass: { wave: 'sine', gain: 0.1, pat: 'R...............', oct: -1 } },
+    wizard: { name: 'مدرسة السحر', bpm: 84, root: 52, scale: 'minor', prog: [0, 5, 3, 4], bars: 1, rev: 0.6, sevenths: true,
+      arp: { wave: 'triangle', gain: 0.06, pat: [0, 2, 4, 2, 1, 3, 4, 3], rate: 8, oct: 1, decay: 0.5, cutoff: 3000 },
+      bell: { prob: 0.18, gain: 0.05, oct: 2 }, bass: { wave: 'sine', gain: 0.08, pat: 'R.......R.......' } },
   };
 
   // Loudness trims measured so every mood plays at about the same level.

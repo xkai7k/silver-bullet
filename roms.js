@@ -480,6 +480,25 @@ function setupRoms(ctx) {
     if (r.code !== 0) throw new Error('ما قدرت أفك الملف: ' + r.err);
     return { dir: tmp, tmp };
   }
+  // Is this dropped thing a mod / translation / texture pack (and not a game or a program to add)?
+  const MOD_WORDS = /(^|[\s._\-\[(])(mods?|patch(es)?|translation|translat|arabic|arab|تعريب|عربي|مود|texture(s)?|retexture|hd[\s._-]?pack|graphic[\s._-]?pack|reshade|enb|fix|trainer|cheats?|dlc[\s._-]?unlock)([\s._\-\])]|$)/i;
+  const MOD_DIRS = /^(romfs|exefs|graphicpacks?|textures|replacements|~mods|mods|bepinex|plugins|scripts|reshade-shaders|load)$/i;
+  ipcMain.handle('mods:sniff', async (_e, p) => {
+    try {
+      const st = fs.statSync(p); const name = path.basename(p);
+      if (/\.(pnach|ips|bps|ups|xdelta|asi|pak|utoc|ucas)$/i.test(name)) return { mod: true, why: 'file' };
+      if (/\.(nsp|xci|iso|cso|chd|rvz|wbfs|wua|rpx|cia|3ds|nds|gba|gbc|gb|sfc|smc|nes|n64|z64|v64|gcm|pbp|cue|bin|torrent|lnk|url)$/i.test(name)) return { mod: false };
+      if (/\.exe$/i.test(name)) return { mod: MOD_WORDS.test(name.replace(/\.exe$/i, '')) && !/setup|install/i.test(name) ? true : MOD_WORDS.test(name), why: 'installer' };
+      let names = [];
+      if (st.isDirectory()) { (function w(d, n) { for (const x of fs.readdirSync(d, { withFileTypes: true }).slice(0, 400)) { names.push(x.name); if (x.isDirectory() && n > 0) w(path.join(d, x.name), n - 1); } })(p, 2); }
+      else if (/\.(zip|7z|rar)$/i.test(name)) { const r = /\.7z$/i.test(name) ? await run(await sevenZip(), ['l', '-ba', p], { full: true }) : await run('tar', ['-tf', p], { full: true }); names = String(r.out || '').split(/\r?\n/).flatMap((l) => l.trim().split(/[\\/]/)).filter(Boolean).slice(0, 2000); }
+      else return { mod: false };
+      if (names.some((n) => MOD_DIRS.test(n) || /^rules\.txt$|\.pnach$|\.pak$|\.asi$|\.ips$/i.test(n))) return { mod: true, why: 'inside' };
+      if (MOD_WORDS.test(name)) return { mod: true, why: 'name' };
+      // an archive of a game / program (has an .exe and lots of files) is not a mod
+      return { mod: false };
+    } catch { return { mod: false }; }
+  });
   // The folder of a PC port of a Switch game: it has romfs and a language.txt or an *_options.ini (Longshot, Hookshot…)
   function portDir(gameDir, args) {
     const isPort = (d) => { try { return fs.existsSync(path.join(d, 'romfs')) && (fs.existsSync(path.join(d, 'language.txt')) || fs.readdirSync(d).some((f) => /_options\.ini$/i.test(f)) || fs.existsSync(path.join(d, 'mods'))); } catch { return false; } };
@@ -567,9 +586,10 @@ function setupRoms(ctx) {
       const m = /^steam:\/\/rungameid\/(\d+)/.exec(info.target || '');
       if (m) gameDir = await ctx.steamGameDir(m[1]);
       let lnkArgs = '';
+      if (/^[a-z]:\\/i.test(info.target || '') && !fs.existsSync(info.target)) return { ok: false, msg: `ما ركبته: اللعبة مو موجودة بمكانها (${path.basename(info.target)} انحذف أو انتقل). عدّل مسار اللعبة من بطاقتها وجرب مرة ثانية.` };
       if (/\.lnk$/i.test(info.target || '')) { const l = await ctx.readLnk(info.target); if (l?.target) { gameDir = path.dirname(l.target); lnkArgs = l.args || ''; } }
       if (!gameDir && /^[a-z]:\\/i.test(info.target || '')) gameDir = fs.statSync(info.target).isDirectory() ? info.target : path.dirname(info.target);
-      if (!gameDir || !fs.existsSync(gameDir)) return { ok: false, msg: 'ما لقيت مجلد اللعبة' };
+      if (!gameDir || !fs.existsSync(gameDir)) return { ok: false, msg: 'ما ركبته: ما لقيت مجلد اللعبة (هل هي لعبة كمبيوتر مثبتة؟)' };
       // A Switch-style mod (romfs / exefs) on a PC port of a Switch game (Longshot, Hookshot, NX2navi…): it goes in the port's mods folder
       const swParts = u.dir ? findDirs(u.dir, (n) => /^(romfs|exefs)$/i.test(n)) : [];
       if (swParts.length) {
@@ -589,20 +609,43 @@ function setupRoms(ctx) {
         log('mod installed', 'switch port', names.join(', '), '→', modsDir);
         return { ok: true, msg: `انحط "${names.join('، ')}" في مجلد mods حق اللعبة، ويشتغل أول ما تفتحها. للإزالة: احذف مجلده من mods.` };
       }
-      if (!u.dir) { // a single file (a .pak, a .dll...) goes into the game folder
-        const to = path.join(gameDir, path.basename(src));
-        const bak = path.join(gameDir, '_sb_backup', String(Date.now())); if (fs.existsSync(to)) { fs.mkdirSync(bak, { recursive: true }); fs.copyFileSync(to, path.join(bak, path.basename(src))); }
-        fs.copyFileSync(src, to); log('mod installed', 'pc file', path.basename(src)); return { ok: true, msg: 'انحط الملف في مجلد اللعبة' };
+      // where things go in a PC game: Unreal .pak → Content/Paks/~mods, .asi → next to the game (or scripts), BepInEx plugins → BepInEx/plugins
+      const findUnder = (root, test, depth = 4) => { let hit = null; (function w(d, n) { if (hit) return; let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const x of ents) { if (!x.isDirectory()) continue; const f = path.join(d, x.name); if (test(x.name, f)) { hit = f; return; } if (n > 0) w(f, n - 1); } })(root, depth); return hit; };
+      const files0 = u.dir ? listFiles(u.dir) : [src];
+      const backupCopy = (from, to) => { if (fs.existsSync(to)) { const b = path.join(gameDir, '_sb_backup', String(Date.now()), path.relative(gameDir, to)); fs.mkdirSync(path.dirname(b), { recursive: true }); fs.copyFileSync(to, b); } fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to); };
+      const paks = files0.filter((f) => /\.(pak|utoc|ucas|sig)$/i.test(f));
+      if (paks.length && paks.length === files0.filter((f) => !/\.(txt|md|png|jpe?g|url|nfo)$/i.test(f)).length) {
+        const pd = findUnder(gameDir, (n, f) => /^paks$/i.test(n) && /content/i.test(path.dirname(f)), 5);
+        if (!pd) return { ok: false, msg: 'ما ركبته: المود ملفات .pak (لعبة Unreal) وما لقيت مجلد Content/Paks داخل مجلد اللعبة' };
+        for (const f of paks) backupCopy(f, path.join(pd, '~mods', path.basename(f)));
+        log('mod installed', 'pc paks', modName, paks.length); return { ok: true, msg: `انحط ${paks.length} ملف pak في Content/Paks/~mods. للإزالة احذفها من هناك.` };
       }
-      const installer = listFiles(dir).find((f) => /(setup|install).*\.exe$/i.test(path.basename(f)));
-      if (installer) { require('electron').shell.openPath(installer); log('mod installed', 'installer', path.basename(installer)); return { ok: true, msg: 'فيه مثبّت داخل الملف، فتحته لك: كمّل خطواته.' }; }
-      // archives often wrap everything in one extra folder: use what's inside it
-      let root = dir; for (let i = 0; i < 3; i++) { const ents = fs.readdirSync(root, { withFileTypes: true }); if (ents.length === 1 && ents[0].isDirectory() && !fs.existsSync(path.join(gameDir, ents[0].name))) root = path.join(root, ents[0].name); else break; }
-      const bak = path.join(gameDir, '_sb_backup', String(Date.now()));
+      const asis = files0.filter((f) => /\.asi$/i.test(f));
+      if (asis.length) {
+        const sd = fs.existsSync(path.join(gameDir, 'scripts')) ? path.join(gameDir, 'scripts') : gameDir;
+        for (const f of files0.filter((x) => !/\.(txt|md|url|nfo)$/i.test(x))) backupCopy(f, path.join(sd, path.basename(f)));
+        const hasLoader = fs.readdirSync(gameDir).some((x) => /^(dinput8|winmm|version|dsound|xlive|vorbisfile)\.dll$/i.test(x));
+        log('mod installed', 'pc asi', modName);
+        return { ok: true, msg: hasLoader ? 'انحط مود .asi جنب اللعبة.' : 'انحط مود .asi، بس هالنوع يحتاج "ASI Loader" (ملف dinput8.dll) جنب اللعبة، وما لقيته. نزّله وحطه وبيشتغل.' };
+      }
+      if (!u.dir) { // a single file goes in only when the game already has one with that name (that's what a fix / translation file replaces)
+        const same = (function find(d, n) { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return null; } for (const x of ents) { const f = path.join(d, x.name); if (!x.isDirectory() && x.name.toLowerCase() === path.basename(src).toLowerCase()) return f; } if (n > 0) for (const x of ents) if (x.isDirectory()) { const r = find(path.join(d, x.name), n - 1); if (r) return r; } return null; })(gameDir, 3);
+        if (!same) return { ok: false, msg: `ما ركبته: ما لقيت داخل مجلد اللعبة ملف اسمه ${path.basename(src)} يتبدّل، فما أعرف وين مكانه. شوف تعليمات المود.` };
+        backupCopy(src, same); log('mod installed', 'pc file', path.basename(src)); return { ok: true, msg: `تبدّل ${path.basename(src)} داخل اللعبة (القديم محفوظ في _sb_backup).` };
+      }
+      const installer = listFiles(dir).find((f) => /(setup|install|patch|arabic|تعريب).*\.exe$/i.test(path.basename(f)));
+      // archives often wrap everything in one extra folder: line the mod up with the game folder by the names they share
+      const gameNames = new Set(fs.readdirSync(gameDir).map((x) => x.toLowerCase()));
+      let root = null, best = 0;
+      (function w(d, n) { let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } const score = ents.filter((x) => gameNames.has(x.name.toLowerCase())).length; if (score > best) { best = score; root = d; } if (n > 0) for (const x of ents) if (x.isDirectory()) w(path.join(d, x.name), n - 1); })(dir, 3);
+      if (!root || !best) {
+        if (installer) { require('electron').shell.openPath(installer); log('mod installed', 'installer', path.basename(installer)); return { ok: true, msg: 'فيه برنامج تثبيت داخل المود، فتحته لك: كمّل خطواته واختر مجلد اللعبة. (ما أقدر أتأكد إنه ركب إلا إذا كمّلته)' }; }
+        return { ok: false, msg: 'ما ركبته: ملفات المود ما تشبه ملفات اللعبة (ولا مجلد ولا ملف بنفس الأسماء)، فما أعرف وين مكانها. اقرأ تعليمات المود أو جرّب لعبة ثانية.' };
+      }
       let n = 0;
-      for (const f of listFiles(root)) { const rel = path.relative(root, f), to = path.join(gameDir, rel); if (fs.existsSync(to)) { fs.mkdirSync(path.dirname(path.join(bak, rel)), { recursive: true }); fs.copyFileSync(to, path.join(bak, rel)); } fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(f, to); n++; }
-      log('mod installed', 'pc', modName, n, 'files');
-      return { ok: true, msg: `انحط (${n} ملف) في مجلد اللعبة. الملفات القديمة اللي تغيّرت محفوظة في _sb_backup لو بغيت ترجعها.` };
+      for (const f of listFiles(root)) { if (/^(readme|license|licence|credits)/i.test(path.basename(f)) && path.dirname(f) === root) continue; backupCopy(f, path.join(gameDir, path.relative(root, f))); n++; }
+      log('mod installed', 'pc', modName, n, 'files (lined up by', best, 'names)');
+      return { ok: true, msg: `انحط (${n} ملف) في مكانها داخل مجلد اللعبة. القديم محفوظ في _sb_backup لو بغيت ترجعه.` };
     } catch (err) { log('mod install failed', err.message); return { ok: false, msg: String(err.message || err) }; }
     finally { if (tmp) try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} }
   });

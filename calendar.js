@@ -281,7 +281,10 @@
     const days = Math.ceil((new Date(up.at.getFullYear(), up.at.getMonth(), up.at.getDate()) - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000);
     return `📅 ${up.e.title} ${days <= 0 ? 'اليوم' : days === 1 ? 'بكرة' : `بعد ${days} يوم`}`;
   };
-  window.Calendar = { render: draw, add: (day) => openEvent(null, day) };
+  window.Calendar = { render: draw, add: (day) => openEvent(null, day),
+    // the next few events with their time left (for the little countdown under the calendar card on the home screen)
+    upcoming: (n = 3) => events().map((e) => ({ e, at: nextOccur(e) })).filter((x) => x.at && x.at > Date.now()).sort((a, b) => a.at - b.at).slice(0, n)
+      .map(({ e, at }) => ({ title: e.title, color: e.color, at, left: ((f) => f.big || f.parts.filter(([n], i) => n || i >= 2).map(([n, w]) => `${n} ${w}`).join(' · '))(fmtLeft(at - Date.now())) })) };
   setTimeout(checkReminders, 8000);
   setInterval(checkReminders, 60000);
 })();

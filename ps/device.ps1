@@ -52,4 +52,17 @@ try {
   }
 } catch {}
 $r.wireless = @($devs)
+# keyboards and mice (wired too): the name the device itself reports (e.g. "G502 HERO"), not Windows' generic one
+function Named($cls) {
+  $out = New-Object System.Collections.ArrayList; $seenN = @{}
+  Get-PnpDevice -Class $cls -PresentOnly | Where-Object { $_.Status -eq 'OK' } | ForEach-Object {
+    $n = (Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_BusReportedDeviceDesc' -ErrorAction SilentlyContinue).Data
+    if (-not $n -or $n -match '(?i)^(usb input device|hid|usb receiver)$') { $n = $_.FriendlyName }
+    $n = "$n".Trim()
+    if ($n -and $n -notmatch '(?i)^(hid keyboard device|hid-compliant mouse|standard ps/2 keyboard|ps/2 compatible mouse|hid keyboard|terminal server)' -and -not $seenN[$n.ToLower()]) { $seenN[$n.ToLower()] = 1; [void]$out.Add($n) }
+  }
+  return @($out)
+}
+$r.keyboards = Named 'Keyboard'
+$r.mice = Named 'Mouse'
 ConvertTo-Json -Compress -Depth 4 -InputObject $r

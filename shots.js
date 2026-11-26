@@ -107,6 +107,11 @@
   window.Shots = {
     sendToPhone,
     scan,
+    // the newest captures from every game (the phone page shows these)
+    recent(n = 60) {
+      const names = Object.fromEntries(gameItems().map((i) => [i.id, i.name]));
+      return Object.entries(shots).flatMap(([id, l]) => l.map((x) => ({ file: x.f, t: x.t || 0, video: !!x.video, game: names[id] || '' }))).sort((a, b) => b.t - a.t).slice(0, n);
+    },
     isOpen: () => !v.hidden,
     close,
     navigate(a) { if (a === 'back') close(); else if (a === 'left') { idx = (idx + 1) % list.length; show(); } else if (a === 'right') { idx = (idx - 1 + list.length) % list.length; show(); } },

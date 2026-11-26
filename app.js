@@ -77,6 +77,27 @@ const pv = {
   ...(window.api || {}), // real functions from the app; the stubs above only fill gaps
 };
 const inElectron = !!window.api;
+// ---------- where a downloaded game goes: ask which drive (when there's more than one), or use the one you said to always use ----------
+async function pickInstallDrive(quiet) {
+  const drives = (await pv.drivesList?.().catch(() => [])) || [];
+  if (drives.length < 2) return '';
+  const always = data.settings.installDrive;
+  if (always && drives.some((d) => d.root === always)) return always;
+  if (quiet) return '';
+  const gb = (b) => (b / 1073741824).toFixed(b > 1073741824 * 100 ? 0 : 1);
+  return new Promise((res) => {
+    const d = document.createElement('dialog'); d.className = 'drive-pick'; d.dir = 'rtl';
+    d.innerHTML = `<h2>💾 وين أنزّل اللعبة؟</h2><div class="dp-list">${drives.map((x) => `<button class="dp" data-r="${esc(x.root)}"><b dir="ltr">${esc(x.root)}</b><i style="--p:${Math.round((1 - x.free / x.total) * 100)}%"></i><small>فاضي ${gb(x.free)} من ${gb(x.total)} GB</small></button>`).join('')}</div>
+      <label class="check"><input type="checkbox" id="dpAlways"> استخدمه دايماً (تقدر تغيّره من الإعدادات ← متقدم)</label>
+      <div class="actions"><button class="btn ghost" data-x>إلغاء</button></div>`;
+    document.body.appendChild(d); d.showModal();
+    let pick = null;
+    d.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { pick = b.dataset.r; if (d.querySelector('#dpAlways').checked) { data.settings.installDrive = pick; save(); } d.close(); });
+    d.querySelector('[data-x]').onclick = () => d.close();
+    d.onclose = () => { d.remove(); res(pick); };
+  });
+}
+if (window.api?.torAdd) { const raw = pv.torAdd; pv.torAdd = async (w, opts = {}) => { const dir = await pickInstallDrive(opts.quiet); if (dir === null) return { ok: false, error: 'ألغيت' }; return raw(w, dir || undefined); }; }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 // what a page's card says under its name
@@ -245,6 +266,9 @@ const THEMES = [
   { id: 'pirate', name: 'بحر القراصنة (ستايل ون بيس)' },
   { id: 'najdi', name: 'نجدي' },
   { id: 'vintage', name: 'كلاسيك غامق (فينتج)' },
+  { id: 'night', name: 'المناوبة الليلية (رعب خفيف)' },
+  { id: 'wizard', name: 'مدرسة السحر' },
+  { id: 'plain', name: 'بدون ثيم (فاتح وبسيط)' },
 ];
 
 let data;
@@ -390,6 +414,25 @@ function renderHome() {
       </div>` : ''}`;
 
   wireImages(view);
+  // hover the calendar card: a small live countdown pops up right under it
+  view.querySelectorAll('.shelf-card[data-page]').forEach((el) => {
+    const pg = data.pages.find((p) => p.id === el.dataset.page);
+    if (pg?.type !== 'calendar') return;
+    let tip = null, tick = 0;
+    const paint = () => {
+      const up = window.Calendar?.upcoming?.(3) || [];
+      if (!tip) return;
+      tip.innerHTML = up.length ? up.map((u) => `<div class="cdt-row"><b>${esc(u.title || 'موعد')}</b><span>${esc(u.left)}</span></div>`).join('') : '<div class="cdt-row"><span>ما فيه مواعيد جاية</span></div>';
+      const r = el.getBoundingClientRect();
+      tip.style.left = `${Math.max(8, Math.min(innerWidth - tip.offsetWidth - 8, r.left + r.width / 2 - tip.offsetWidth / 2))}px`;
+      tip.style.top = `${Math.min(innerHeight - tip.offsetHeight - 8, r.bottom + 8)}px`;
+    };
+    el.addEventListener('mouseenter', () => {
+      tip?.remove(); tip = document.createElement('div'); tip.className = 'cal-tip'; tip.dir = 'rtl';
+      document.body.appendChild(tip); paint(); clearInterval(tick); tick = setInterval(() => (document.body.contains(el) ? paint() : (tip?.remove(), clearInterval(tick))), 1000);
+    });
+    el.addEventListener('mouseleave', () => { clearInterval(tick); tip?.remove(); tip = null; });
+  });
   view.querySelectorAll('.shelf-card[data-idx]').forEach((el) => {
     const n = Number(el.dataset.idx);
     el.onclick = (e) => { if (el._dragged) { el._dragged = false; e.preventDefault(); return; } (n === homeFocus ? goPage(el.dataset.page) : setHomeFocus(n)); };
@@ -652,7 +695,7 @@ function renderPage() {
   if (at) at.onclick = () => openEditor(null);
   $('#clearNew')?.addEventListener('click', () => { markSeen(allItems().map((i) => i.id)); renderPage(); toast('تم'); });
   const sb = $('#pgSearch');
-  if (sb) { sb.oninput = () => { pageQuery = { id: p.id, q: sb.value }; applySearch(p); }; sb.onkeydown = (e) => { if (e.key === 'Escape') { sb.value = ''; sb.oninput(); sb.blur(); } else if (e.key === 'Enter') { view.querySelector('.tile[data-item]:not([hidden])')?.click(); } e.stopPropagation(); }; if (pageQuery.id === p.id && pageQuery.q) applySearch(p); }
+  if (sb) { let st = 0; sb.oninput = () => { pageQuery = { id: p.id, q: sb.value }; clearTimeout(st); st = setTimeout(() => applySearch(p), 90); }; /* typing stays smooth: the list is filtered when you pause */ sb.onkeydown = (e) => { if (e.key === 'Escape') { sb.value = ''; sb.oninput(); sb.blur(); } else if (e.key === 'Enter') { view.querySelector('.tile[data-item]:not([hidden])')?.click(); } e.stopPropagation(); }; if (pageQuery.id === p.id && pageQuery.q) applySearch(p); }
   $('#addOwned')?.addEventListener('click', addOwnedGame);
   $('#ownedSync')?.addEventListener('click', () => importOwned(true));
   if ($('#seriesBox')) window.Series?.render($('#seriesBox'), p);
@@ -857,7 +900,8 @@ function renderDrawer() {
     <button data-nav="keys"><span>🔑</span>المفاتيح والبايوس<small>السويتش وغيره</small></button>
     <div class="nav-sep">أكثر</div>
     <button data-nav="plugins"><span>🔌</span>الإضافات<small>شغّل أو طفّي</small></button>
-    <button data-nav="newpage"><span>＋</span>صفحة جديدة</button>`;
+    <button data-nav="newpage"><span>＋</span>صفحة جديدة</button>
+    <div class="dr-end"><button data-nav="restart"><span>🔄</span>إعادة تشغيل البرنامج</button><button data-nav="quit" class="danger"><span>⏻</span>إغلاق البرنامج</button></div>`;
   nav.querySelectorAll('[data-nav]').forEach((b) => {
     b.onclick = () => {
       const v = b.dataset.nav;
@@ -866,7 +910,9 @@ function renderDrawer() {
       else if (v.startsWith('page:')) goPage(v.slice(5));
       else if (v === 'newpage') openPageEditor(null);
       else if (v === 'emu') { goPage('emu'); openEmuDialog(); }
-      else if (v === 'mods') { if (paths.mods) pv.launch(paths.mods); }
+      else if (v === 'mods') { const mp = data.pages.find((x) => x.type === 'mods'); if (mp) goPage(mp.id); else if (paths.mods) pv.launch(paths.mods); }
+      else if (v === 'restart') { toast('🔄 أعيد تشغيل البرنامج…'); save(); setTimeout(() => pv.updateRestart(), 400); }
+      else if (v === 'quit') window.close();
       else if (v === 'keys') openSettings('keys');
       else if (v === 'plugins') openSettings('plugins');
       else if (v === 'gamesdir') pv.romsFolder('games');
@@ -1089,7 +1135,10 @@ async function firstRunSetup() {
     for (const k of ['rockstar', 'ubisoft', 'ea', 'battlenet', 'gog', 'riot', 'xbox']) epic += await runImport(k, games, true);
   }
   const apps = page('apps');
-  const known = [];
+  const known = [
+    ['C:\\Retro Project\\Playnite\\Retro Project.exe', 'Retro Project'],
+    ['C:\\Program Files\\PCSX2\\pcsx2-qt.exe', 'PCSX2'],
+  ];
   let appsAdded = 0;
   if (apps) for (const [p, name] of known) {
     const info = await pv.fileInfo(p);
@@ -1240,7 +1289,7 @@ const emins = (s) => s < 60 ? 'أقل من دقيقة' : s < 3600 ? `${Math.ceil
 pv.onEmuProgress((m) => {
   if (m.step === 'plan') { emuPlan = { n: m.n, t0: Date.now() }; if (!m.n) return; for (const k in emuRows) delete emuRows[k]; for (const nm of m.names || []) emuRows[nm] = { name: nm, step: 'wait' }; }
   else { const o = emuRows[m.name]; if (m.step === 'download' && m.got) { m.t0 = o?.t0 || Date.now(); m.speed = m.got / Math.max(0.5, (Date.now() - m.t0) / 1000); } emuRows[m.name] = { ...(o || {}), ...m }; }
-  emuProg.hidden = false;
+  emuProg.hidden = !!emuProg.dataset.gone;
   const rows = Object.values(emuRows);
   const label = (r) => r.step === 'wait' ? '⏳ بالدور' : r.step === 'download' ? (r.cores ? `${r.cores[0]} من ${r.cores[1]}` : `⬇ ${r.pct || 0}%` + (r.total ? ` · ${emb(r.got || 0)} من ${emb(r.total)} MB` : r.got ? ` · ${emb(r.got)} MB` : '')) : r.step === 'extract' ? '📦 فك الضغط' : r.step === 'done' ? '✓ جاهز' : '✗ ما نزل';
   // the big line on top: how far along all of it is, and roughly how long is left
@@ -1256,11 +1305,29 @@ pv.onEmuProgress((m) => {
   else if (cores && cores.step !== 'done') { head = 'آخر خطوة: أجهّز أجهزة RetroArch'; sub = `${cores.cores?.[0] || 0} من ${cores.cores?.[1] || '…'}`; }
   else { head = '✓ كل شي جاهز'; sub = 'تقدر تلعب الحين'; }
   const all = cores && cores.step !== 'done' && (!n || fin >= n) ? (cores.pct || 0) : Math.round(frac * 100);
-  emuProg.innerHTML = `<button class="ep-x" title="صغّرها">–</button><b>${esc(head)}</b><div class="ep-sub">${esc(sub)} <span>${all}%</span></div><div class="ep-bar"><i style="width:${all}%"></i></div>` +
+  emuProg.innerHTML = `<button class="ep-x" title="صغّرها">–</button><button class="ep-x ep-hide" title="خبّها (تكمل بالخلفية)">✕</button><b>${esc(head)}</b><div class="ep-sub">${esc(sub)} <span>${all}%</span></div><div class="ep-bar"><i style="width:${all}%"></i></div>` +
     `<div class="ep-list">` + rows.map((r) =>
     `<div class="ep-row ${r.step}"><span>${esc(r.name)}</span><small>${label(r)}</small>${r.step === 'download' ? `<i style="--p:${r.pct || 0}%"></i>` : ''}</div>`).join('') + `</div>`;
   emuProg.classList.toggle('mini', !!emuProg.dataset.mini);
   emuProg.querySelector('.ep-x').onclick = () => { emuProg.dataset.mini = emuProg.dataset.mini ? '' : '1'; emuProg.classList.toggle('mini', !!emuProg.dataset.mini); };
+  // hidden: it keeps going in the background, and a small chip shows how far it is (click it to bring the box back)
+  emuProg.querySelector('.ep-hide').onclick = () => { emuProg.dataset.gone = '1'; emuProg.hidden = true; toast('يكمل التحميل بالخلفية 👍'); };
+  let chip = $('#emuChip');
+  if (emuProg.dataset.gone && !head.startsWith('✓')) {
+    if (!chip) { chip = document.createElement('button'); chip.id = 'emuChip'; chip.onclick = () => { delete emuProg.dataset.gone; emuProg.hidden = false; chip.remove(); }; document.body.appendChild(chip); }
+    chip.textContent = `⬇ ${all}%`; chip.title = head + ' · ' + sub;
+  } else chip?.remove();
+  // the very first setup finished: restart once so everything that came down is picked up cleanly
+  if (head.startsWith('✓') && !data.emuSetupRestarted && emuPlan?.n) {
+    data.emuSetupRestarted = true; save();
+    const bar = document.createElement('div'); bar.className = 'upd-bar';
+    bar.innerHTML = '<span>✓ خلص التجهيز. أعيد تشغيل البرنامج بعد <b>8</b> ثواني عشان يشتغل كل شي صح</span><button class="btn primary sm">الحين</button><button class="btn ghost sm">لا، بعدين</button>';
+    document.body.appendChild(bar);
+    let left = 8; const tm = setInterval(() => { left--; const b = bar.querySelector('b'); if (b) b.textContent = left; if (left <= 0) { clearInterval(tm); pv.gameRunning().then((g) => (g ? bar.remove() : pv.updateRestart())); } }, 1000);
+    const [now, later] = bar.querySelectorAll('button');
+    now.onclick = () => { clearInterval(tm); pv.updateRestart(); };
+    later.onclick = () => { clearInterval(tm); bar.remove(); };
+  }
   const cl = emuProg.querySelector('.ep-list'); const act = cl.querySelector('.download, .extract'); if (act) act.scrollIntoView({ block: 'nearest' });
   if (head.startsWith('✓')) setTimeout(() => { if (!Object.values(emuRows).some((r) => ['download', 'extract', 'wait'].includes(r.step))) emuProg.hidden = true; }, 8000);
 });
@@ -1708,6 +1775,8 @@ form.onsubmit = async (e) => {
     voice: form.voice.value.trim(),
   };
   if (!fields.name || !fields.target) return;
+  if (isWeb(fields.target) && !(await safeLink(fields.target))) return;
+  if (/^[a-z]:[\\/]/i.test(fields.target) && !(await safeFile(fields.target))) return;
   const hero = form.dataset.hero; delete form.dataset.hero;
   let item;
   if (editingId) {
@@ -1765,6 +1834,52 @@ window.addEventListener('dragover', (e) => { if (hasFiles(e)) { e.preventDefault
 window.addEventListener('dragleave', (e) => { if (--dragDepth <= 0 || !e.relatedTarget) hideDrop(); });
 setInterval(() => { if (dz() && !dz().hidden && Date.now() - lastOver > 400) hideDrop(); }, 250); // a cancelled drag sends no "leave": this catches it
 ['mousemove', 'keydown', 'blur', 'mouseup'].forEach((ev) => window.addEventListener(ev, () => { if (dz() && !dz().hidden && Date.now() - lastOver > 150) hideDrop(); }, true));
+// ---------- freeze finder: anything that blocks the screen for long gets written in the log, with what you did just before ----------
+try {
+  let lastFreezeLog = 0;
+  new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.duration > 400 && Date.now() - lastFreezeLog > 5000) { lastFreezeLog = Date.now(); pv.log(`freeze ${Math.round(e.duration)}ms (page ${currentPageId || 'home'}, after: ${window._lastAct || '?'})`); } }).observe({ entryTypes: ['longtask'] });
+  const note = (k) => (e) => { const t = e.target?.closest?.('[id]')?.id || String(e.target?.className || e.target?.tagName || '').slice(0, 30); window._lastAct = `${k} ${t}`; };
+  document.addEventListener('click', note('click'), true); document.addEventListener('input', note('typing in'), true);
+} catch {}
+// ---------- safety check: files go through Windows Defender, links through a few warning signs; a warning needs a clear "yes" ----------
+const RISKY_EXT = /\.(exe|msi|bat|cmd|scr|ps1|vbs|js|jar|com|pif|zip|rar|7z|dll|asi|lnk)$/i;
+function riskDialog(title, why) {
+  return new Promise((res) => {
+    const d = document.createElement('dialog'); d.className = 'risk-dlg'; d.dir = 'rtl';
+    d.innerHTML = `<div class="rk-ic">⚠️</div><h2>${esc(title)}</h2><p>${why}</p>
+      <label class="check"><input type="checkbox" id="rkOk"> فاهم الخطر، وأبي أكمل على مسؤوليتي</label>
+      <div class="actions"><button class="btn primary" data-no>لا، لا تضيفه</button><button class="btn ghost" data-yes disabled>كمّل على أي حال</button></div>`;
+    document.body.appendChild(d); d.showModal();
+    const yes = d.querySelector('[data-yes]');
+    d.querySelector('#rkOk').onchange = (e) => { yes.disabled = !e.target.checked; };
+    d.querySelector('[data-no]').onclick = () => d.close('no');
+    yes.onclick = () => d.close('yes');
+    d.onclose = () => { d.remove(); res(d.returnValue === 'yes'); };
+    window.Akai?.say?.('انتبه! هذا الملف شكله مو سليم 😬', 'shy');
+  });
+}
+async function safeFile(p) {
+  if (!RISKY_EXT.test(p) || !pv.scanFile) return true;
+  const tt = setTimeout(() => toast('🛡 أفحص الملف بالحماية قبل ما أضيفه…', 2500), 1200);
+  const r = await pv.scanFile(p).catch(() => ({ ok: true })); clearTimeout(tt);
+  if (r.ok) return true;
+  return riskDialog('ويندوز ديفندر لقى خطر في الملف', `<b dir="ltr">${esc(p.split(/[\\/]/).pop())}</b><br>التهديد: <b dir="ltr">${esc(r.threat)}</b><br>أنصحك ما تضيفه وتحذفه.`);
+}
+function linkRisk(u) {
+  let x; try { x = new URL(u); } catch { return ''; }
+  const why = [];
+  if (x.protocol === 'http:') why.push('الرابط مو مشفّر (http بدل https)');
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(x.hostname)) why.push('الرابط رقم عنوان بدل اسم موقع');
+  if (/(^|\.)xn--/.test(x.hostname)) why.push('اسم الموقع فيه حروف متنكرة (ممكن يقلّد موقع معروف)');
+  if (/\.(exe|msi|scr|bat|cmd|vbs|ps1|apk)(\?|$)/i.test(x.pathname)) why.push('الرابط ينزّل برنامج مباشرة');
+  if (/^(bit\.ly|tinyurl\.com|t\.co|cutt\.ly|is\.gd|shorturl\.at|rb\.gy|adf\.ly|ouo\.io|shrinkme\.io)$/i.test(x.hostname)) why.push('رابط مختصر يخفي وين يوديك');
+  if (/(free.*(robux|vbucks|nitro|steam)|login|verify|gift-?card)/i.test(x.hostname + x.pathname) && !/(steampowered|epicgames|discord|roblox)\.com$/i.test(x.hostname)) why.push('شكله صفحة تصيّد (تطلب دخول أو هدايا)');
+  return why.join('، ');
+}
+async function safeLink(u) {
+  const why = linkRisk(u); if (!why) return true;
+  return riskDialog('الرابط فيه علامات خطر', `<b dir="ltr">${esc(u.slice(0, 120))}</b><br>${esc(why)}.`);
+}
 window.addEventListener('drop', async (e) => {
   if (!hasFiles(e)) { innerDrag = false; hideDrop(); return; }
   if ($('#detail') && !$('#detail').hidden) { e.preventDefault(); hideDrop(); return; } // the game page handles its own drops (mods)
@@ -1772,6 +1887,16 @@ window.addEventListener('drop', async (e) => {
   hideDrop();
   if (!inElectron) return toast('السحب والإفلات يشتغل داخل البرنامج');
   if (currentPageId && page()?.type === 'mods') { modsDrop([...e.dataTransfer.files].map((f) => pv.pathForFile(f)).filter(Boolean)); return; } // the Mods page: install them on a game
+  // mods / translations / texture packs dropped anywhere: they go to a game, not into the apps page
+  const dropped = [...e.dataTransfer.files].map((f) => pv.pathForFile(f)).filter(Boolean);
+  const sniffs = await Promise.all(dropped.map((p) => pv.modsSniff?.(p).catch(() => null)));
+  if (dropped.length && sniffs.some((x) => x?.mod)) {
+    // everything dropped together from one mod folder (an installer + its licenses folder…) is one mod
+    const modFiles = sniffs.every((x) => x?.mod) || dropped.length <= 4 ? dropped : dropped.filter((_, i) => sniffs[i]?.mod);
+    pv.log('drop: looks like a mod → ' + modFiles.map((x) => x.split(/[\\/]/).pop()).join(', '));
+    modsDrop(modFiles.length > 1 && modFiles.every((x) => x.startsWith(modFiles[0].replace(/[\\/][^\\/]+$/, ''))) ? [modFiles.find((x) => /\.exe$/i.test(x)) || modFiles[0].replace(/[\\/][^\\/]+$/, '')] : modFiles);
+    return;
+  }
   let target = null;
   let n = 0, busyN = 0, dupN = 0; // added now / downloading or being prepared / already there
   for (const f of e.dataTransfer.files) {
@@ -1779,6 +1904,7 @@ window.addEventListener('drop', async (e) => {
     if (!p) continue;
     const info = await pv.fileInfo(p);
     if (!info.exists) continue;
+    if (!(await safeFile(p))) { toast('ما أضفته 👍'); continue; }
     if (/\.torrent$/i.test(p) && currentPageId === 'games' && gamesTab === 'tor') { await addToTorLib(p); continue; }
     if (/\.torrent$/i.test(p)) { addToTorLib(p, true);
       const r = await pv.torAdd(p); toast(r.ok ? '🔎 جاري البحث عن مصادر… تشوف التقدم تحت يسار' : `ما قدرت: ${r.error}`); busyN++; continue; }
@@ -1938,7 +2064,9 @@ function setTheme(id) {
   if (!THEMES.some((t) => t.id === id)) return;
   data.theme = id;
   document.body.dataset.theme = id;
+  setTimeout(applyEmoji, 0);
   window.applyScene?.(id);
+  window.Akai?.dress?.(); // his outfit (and the little one on the dock) changes with the theme right away
   save();
   window.Music?.themeChanged();
   window.Pad?.syncLight();
@@ -2036,7 +2164,7 @@ async function spDockSync(force) {
     area.querySelector('.spd-msg small').textContent = res.notInstalled ? 'ثبّته من متجر مايكروسوفت، وبعدها يفتح هنا داخل البرنامج' : 'ارجع لهالصفحة وجرب مرة ثانية';
   }
 }
-setInterval(() => spDockSync(false), 250);
+setInterval(() => { if (!window.SB_PAUSED?.()) spDockSync(false); }, 250);
 
 // ---------- Hover card: album art + seek bar ----------
 const spPop = document.createElement('div');
@@ -2193,13 +2321,14 @@ function openSettings(tab = 'general') {
   if (tab === 'phone') drawRemote();
   if (tab === 'keys') keysStatus();
   if (tab === 'plugins') drawPlugins();
-  if (tab === 'advanced') { drawDevice(); $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDingVol').value = Math.round((data.settings.dingVol ?? 1) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
+  if (tab === 'advanced') { pv.drivesList?.().then((ds) => { const sel = $('#advDrive'); if (!sel || !ds) return; sel.innerHTML = '<option value="">اسألني كل مرة</option>' + ds.map((x) => `<option value="${esc(x.root)}">${esc(x.root)} — فاضي ${(x.free / 1073741824).toFixed(0)} GB</option>`).join(''); sel.value = data.settings.installDrive || ''; }); drawDevice(); $('#advMusicVol').value = Math.round((data.music?.volume ?? 0.4) * 100); $('#advDingVol').value = Math.round((data.settings.dingVol ?? 1) * 100); $('#advDuck').checked = data.settings.duck !== false; $('#advLite').checked = !!data.settings.lite; $('#advReduceFx').checked = !!data.settings.noBlur; }
   $('#setAkaiName').value = data.settings.akaiName || '';
   $('#setLang').value = data.settings.lang || 'ar';
   if (tab === 'moods') window.renderMoodSettings?.($('#setMoods'));
   if (tab === 'controls') window.renderControlSettings?.($('#setControls'));
   $('#setVoiceModel').value = data.settings.voiceModel || 'base';
   $('#setArtStrong').checked = !!data.settings.artStrong;
+  $('#setEmoji').checked = !!data.settings.phoneEmoji;
   $('#setWakeOn').checked = !!data.settings.wakeOn;
   $('#setName').value = data.user?.name || '';
   $('#setBright').value = Math.round((data.settings.brightness ?? 1) * 100);
@@ -2208,8 +2337,30 @@ function openSettings(tab = 'general') {
 }
 $('#setVoiceModel').onchange = () => { data.settings.voiceModel = $('#setVoiceModel').value; data.settings.voiceChosen = true; save(); window.Voice?.reset(); window.Voice?.preload(); };
 $('#settingsClose').onclick = () => $('#settings').close();
-$('#setAutostart').onchange = async () => { data.settings.autostart = $('#setAutostart').checked; save(); const on = await pv.autostart(data.settings.autostart); toast(on ? 'Silver Bullet بيشتغل مع ويندوز' : 'ما راح يشتغل مع ويندوز'); };
+$('#setAutostart').onchange = async () => { data.settings.autostart = $('#setAutostart').checked; save(); const on = await pv.autostart(data.settings.autostart); autostartSaid(on, true); };
+function autostartSaid(on, loud) {
+  if (on === 'blocked') { toast(`⚠️ ويندوز موقف تشغيله مع الجهاز: فعّله من إعدادات ويندوز ← Startup ← Silver Bullet${loud ? ' (فتحتها لك)' : ''}`, 8000); if (loud) pv.startupSettings?.(); return; }
+  if (loud) toast(on ? 'Silver Bullet بيشتغل مع ويندوز' : 'ما راح يشتغل مع ويندوز');
+}
+// every start: point Windows at where the app is now (after an update or a move), and check Windows didn't switch it off
+setTimeout(async () => { if (inElectron && data.settings.autostart) autostartSaid(await pv.autostart(true).catch(() => true), false); }, 20000);
 document.querySelectorAll('#settings .tab').forEach((t) => t.onclick = () => { const open = $('#settings').open; if (open) $('#settings').close(); openSettings(t.dataset.tab); });
+// "phone-style emoji": colour emoji drawn like on phones (Google's Noto, free to use) instead of Windows' flat ones
+function applyEmoji() {
+  const on = !!data.settings.phoneEmoji, b = document.body;
+  b.style.removeProperty('--font'); b.style.removeProperty('--title-font');
+  if (!on) return;
+  if (!document.getElementById('notoEmoji')) { const l = document.createElement('link'); l.id = 'notoEmoji'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap'; document.head.appendChild(l); }
+  const cs = getComputedStyle(b);
+  for (const v of ['--font', '--title-font']) {
+    const f = cs.getPropertyValue(v).trim(); if (!f) continue;
+    const parts = f.split(','); parts.splice(1, 0, " 'Noto Color Emoji'"); // after the first font, so letters and numbers stay as they are
+    b.style.setProperty(v, parts.join(','));
+  }
+}
+setTimeout(applyEmoji, 300);
+$('#advDrive') && ($('#advDrive').onchange = () => { const v = $('#advDrive').value; if (v) data.settings.installDrive = v; else delete data.settings.installDrive; save(); });
+$('#setEmoji').onchange = () => { data.settings.phoneEmoji = $('#setEmoji').checked; save(); applyEmoji(); };
 $('#setArtStrong').onchange = () => { data.settings.artStrong = $('#setArtStrong').checked; save(); document.body.classList.toggle('art-strong', data.settings.artStrong); };
 $('#voiceTest').onclick = () => { $('#settings').close(); window.Voice?.start(); };
 // The assistant is called Akai, always: the wake word is his name
@@ -2324,8 +2475,9 @@ async function deviceScan(fresh) {
   window.Pad?.setWireless?.(d.wireless || []);
   let gpu = (d.gpus || []).map((g) => g.name).join(' + ');
   const strongGpu = /nvidia|geforce|rtx|gtx|radeon rx|arc a/i.test(gpu);
-  let mics = 0; try { mics = (await navigator.mediaDevices.enumerateDevices()).filter((x) => x.kind === 'audioinput').length; } catch {}
+  let mics = 1;
   if (!data.settings.deviceTuned) {
+    try { mics = (await navigator.mediaDevices.enumerateDevices()).filter((x) => x.kind === 'audioinput').length; } catch {}
     // first look at this PC: pick the settings that suit it, and say what was found
     const did = [];
     const weak = (d.ramGB && d.ramGB <= 8) || (d.cores && d.cores <= 4) || (!strongGpu && !navigator.gpu);
@@ -2344,6 +2496,20 @@ async function deviceScan(fresh) {
   drawDevice();
   return d;
 }
+// which controller is plugged in: PlayStation, Xbox, Nintendo or other (the button names on screen follow it)
+function padBrand(id) { return /054c|playstation|dualsense|dualshock|wireless controller/i.test(id) ? 'sony' : /045e|xbox|xinput/i.test(id) ? 'xbox' : /057e|pro controller|joy-?con|nintendo/i.test(id) ? 'nintendo' : 'other'; }
+function padSeen() {
+  const p = [...(navigator.getGamepads?.() || [])].filter(Boolean);
+  const name = { sony: 'بلايستيشن', xbox: 'إكس بوكس', nintendo: 'نينتندو', other: 'يد عامة' };
+  if (p.length) return p.map((x) => `${name[padBrand(x.id)]} — ${x.id.replace(/\(.*?\)/g, '').trim()}`).join(' · ');
+  return data.settings.padBrand ? `${name[data.settings.padBrand]} (آخر مرة)` : 'حرّك اليد عشان أعرفها';
+}
+window.addEventListener('gamepadconnected', (e) => {
+  const b = padBrand(e.gamepad.id);
+  document.body.dataset.pad = b;
+  if (data?.settings && data.settings.padBrand !== b) { data.settings.padBrand = b; save(); pv.log(`controller: ${b} (${e.gamepad.id})`); }
+});
+setTimeout(() => { if (data?.settings?.padBrand) document.body.dataset.pad = data.settings.padBrand; }, 1500);
 function drawDevice() {
   const box = $('#advDevice'); if (!box) return;
   const d = data.device;
@@ -2355,6 +2521,9 @@ function drawDevice() {
       <span>كرت الشاشة</span><b dir="auto">${esc((d.gpus || []).map((g) => g.name).join(' + ') || '—')}</b>
       <span>النوع</span><b>${d.laptop ? 'لابتوب' : 'كمبيوتر مكتبي'} · ${d.wifi ? 'واي فاي ✓' : 'بدون واي فاي'} · ${d.bluetooth ? 'بلوتوث ✓' : 'بدون بلوتوث'}</b>
       <span>اللاسلكي</span><b dir="auto">${(d.wireless || []).map((w) => `<i class="dev-w">${KIND_ICON[w.kind] || '📶'} ${esc(w.name)}</i>`).join('') || 'ما لقيت شي متصل'}</b>
+      <span>الكيبورد</span><b dir="auto">${esc((d.keyboards || []).join(' · ') || 'كيبورد عادي')}</b>
+      <span>الماوس</span><b dir="auto">${esc((d.mice || []).join(' · ') || 'ماوس عادي')}</b>
+      <span>يد التحكم</span><b dir="auto">${esc(padSeen())}</b>
     </div>`;
   box.querySelector('#advScan').onclick = async (e) => {
     e.target.disabled = true; e.target.textContent = '⏳ أفحص…';
@@ -2569,10 +2738,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
     const moved = await pv.modsRepair?.(games.map((i) => ({ id: i.id, name: i.name, target: i.target }))).catch(() => null);
     if (Array.isArray(moved)) { data.settings.modsRepairedV1 = Date.now(); save(); if (moved.length) toast(`🧩 صلّحت مكان المود: ${moved.join('، ')} صار في مجلد mods حق اللعبة`, 7000); }
   }, 12000);
-  try {
-    const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput').length;
-    pv.log(`env: webgpu ${!!navigator.gpu}, mics ${mics}`);
-  } catch {}
+  pv.log(`env: webgpu ${!!navigator.gpu}`); // (no device listing here: it starts a 140 MB camera helper for nothing)
   // what makes the screen stop answering clicks: anything that holds it for over a second gets written down
   try {
     let lastLT = 0;
@@ -2599,6 +2765,28 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
       else if (k === 'pedit') openPageEditor(v || 'games');
       else if (k === 'romsync') syncRomGames();
       else if (k === 'card') { const g = allItems().find((i) => i.ratings && Object.keys(i.ratings).length) || { ...(page('games')?.items[0] || {}), ratings: { 'الجرافيكس': 9, 'الجيم بلاي': 8, 'القصة': 7, 'الساوند تراك': 9 }, ratingNote: 'لعبة ممتعة مع الشباب' }; window.RateCard?.draw(g).then((u) => { const d = document.createElement('dialog'); d.innerHTML = `<img src="${u}" style="max-height:80vh;display:block">`; document.body.appendChild(d); d.showModal(); }); }
+      else if (k === 'showart') pv.showCover?.(decodeURIComponent(v)).then((r) => pv.log('showart ' + v + ' → ' + JSON.stringify(r) + ' name=' + showNameOf('مشاهدة مسلسل Friends الموسم الاول الحلقة 1 مترجمة - توب سينما', '')));
+      else if (k === 'selftest') selfTest();
+      else if (k === 'open') { const q = searchKey(decodeURIComponent(v)); const it = allItems().find((i) => searchKey(i.name).includes(q)); if (it) launchItem(it); pv.log('debug open ' + (it?.name || 'none')); }
+      else if (k === 'click') { const el = document.querySelector(decodeURIComponent(v)); pv.log('debug click ' + decodeURIComponent(v) + ': ' + (el ? 'ok' : 'not found')); el?.click(); }
+      else if (k === 'state') pv.log('debug state: party ' + JSON.stringify({ on: window.Party?.on, panel: !!document.querySelector('#partyPanel'), web: !$('#webWrap').hidden, btn: (() => { const b = $('#wvParty'); return b ? [b.hidden, b.offsetParent !== null, getComputedStyle(b).display] : 'none'; })() }));
+      else if (k === 'lnk') { const it = allItems().find((i) => searchKey(i.name).includes(searchKey(decodeURIComponent(v)))); if (it) pv.lnkRead(it.target).then((r) => pv.log('lnk ' + it.name + ': ' + JSON.stringify(r))); }
+      else if (k === 'shows') pv.seriesScan(page('watch')?.folders || []).then((r) => pv.log('shows ' + JSON.stringify((page('watch')?.folders || [])) + ' :: ' + r.map((x) => x.name + ' [' + x.episodes.length + (x.poster ? ', poster' : '') + '] ' + x.episodes.slice(0, 2).map((e) => e.file).join(' ; ')).join(' | ')));
+      else if (k === 'show') setTimeout(() => document.querySelectorAll('#seriesBox [data-show]')[Number(v) || 0]?.click(), 1500);
+      else if (k === 'party') { const it = page('watch')?.items.find((i) => /youtube/i.test(i.target || '')); if (it) openWeb(it); setTimeout(() => window.Party?.start(), 2500); }
+      else if (k === 'find') pv.log('find ' + v + ': ' + JSON.stringify(allItems().filter((i) => searchKey(i.name).includes(searchKey(v))).map((i) => [i.name, findItem(i.id)?.page?.id, i.target, i.rom, i.console, i.emuId || ''])));
+      else if (k === 'roms') pv.romsList().then((r) => pv.log('roms ' + (r.games || '') + ' :: ' + (r.list || []).filter((x) => !v || x.console === v).map((x) => x.file.split(/[\\/]/).slice(-2).join('/') + (allItems().some((i) => i.rom && i.rom.toLowerCase() === x.file.toLowerCase()) ? '' : ' [NOT IN LIBRARY]') + (data.removed?.['rom:' + x.file.toLowerCase()] ? ' [REMOVED]' : '')).join(' | ')));
+      else if (k === 'vol') pv.setVolume(Number(v), 'spotify').then((r) => pv.log('vol test → ' + r));
+      else if (k === 'genres') fillGenres().then(() => pv.log('genres: ' + JSON.stringify((page('games')?.items || []).filter((i) => i.genres).slice(0, 12).map((i) => [i.name, i.genres]))));
+      else if (k === 'mv') pv.log('mv: ' + JSON.stringify(window.musicVoice(decodeURIComponent(v))));
+      else if (k === 'gallist') { window._galView = 'list'; window._galSort = 'big'; goPage('gallery'); }
+      else if (k === 'remote') pv.remoteSet(v === 'on').then((r) => pv.log('remote ' + JSON.stringify({ on: r.on, url: r.url })));
+      else if (k === 'lang') window.I18n?.set(v);
+      else if (k === 'logs') openLogs(v || 'dl');
+      else if (k === 'settings') openSettings();
+      else if (k === 'ratings') window.SB?.openRatings('tiers');
+      else if (k === 'helpme') window.Help?.open();
+      else if (k === 'search') { const i = $('#pgSearch'); if (i) { i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); } }
       else if (k === 'sppop') window.spPopOpen?.();
       else if (k === 'themes') openThemePicker();
       else if (k === 'emu') openEmuDialog();
@@ -2781,13 +2969,21 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
 
 // ---------- Closing: a goodbye, then the app really quits ----------
 pv.onBye(() => {
-  const name = data?.user?.name ? ` يا ${data.user.name}` : '';
-  const d = document.createElement('div'); d.id = 'byeScreen';
-  d.innerHTML = `<div class="bye-in"><div class="bye-sword">⚔️</div><h1>وداعاً أيها المحارب${esc(name)}</h1><p>نشوفك على خير</p></div>`;
+  // a little "boo!": Akai pops right up to the screen, then laughs and waves (funny, not a horror film)
+  const d = document.createElement('div'); d.id = 'byeScreen'; d.className = 'boo';
+  const face = document.querySelector('#akai .ak-face')?.cloneNode(true);
+  d.innerHTML = `<div class="boo-face"></div><h1 class="boo-t">بـــــخ! 👻</h1><p class="boo-s">هههه خوفتك؟ مع السلامة${data?.user?.name ? ' يا ' + esc(data.user.name) : ''} 👋</p>`;
+  if (face) { face.classList.remove('ak-face'); face.classList.add('boo-svg'); d.querySelector('.boo-face').appendChild(face); }
   document.body.appendChild(d);
+  try { // a short "boo" sound, made right here (no file)
+    const c = new AudioContext(), o = c.createOscillator(), g = c.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(180, c.currentTime); o.frequency.exponentialRampToValueAtTime(90, c.currentTime + 0.45);
+    g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(0.18, c.currentTime + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.5);
+    o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + 0.55);
+  } catch {}
   requestAnimationFrame(() => d.classList.add('show'));
-  window.Akai?.say?.('مع السلامة 👋', 'happy');
-  setTimeout(() => pv.quitNow(), 1900);
+  setTimeout(() => d.classList.add('laugh'), 900);
+  setTimeout(() => pv.quitNow(), 2300);
 });
 
 // ---------- An update arrived from GitHub ----------
@@ -2804,21 +3000,67 @@ pv.onUpdate(() => {
 async function drawRemote(r) {
   r ||= await pv.remoteInfo();
   $('#remoteOn').checked = !!r.on;
-  $('#remoteBox').innerHTML = r.on ? `<div class="share-body"><div class="qr">${r.qr || ''}</div><div><p class="hint">صوّره بكاميرا الجوال، أو افتح:</p><b dir="ltr" class="share-url">${esc(r.url || '')}</b><p class="hint">نصيحة: من الجوال اضغط "إضافة للشاشة الرئيسية" ويصير مثل تطبيق.</p><button class="btn ghost sm" id="remoteNew">🔄 رابط جديد (يقفل القديم)</button></div></div>` : '';
+  $('#remoteBox').innerHTML = r.on ? `<div class="share-body"><div class="qr">${r.qr || ''}</div><div><p class="hint">صوّره بكاميرا الجوال، أو افتح:</p><b dir="ltr" class="share-url">${esc(r.url || '')}</b><p class="hint">نصيحة: من الجوال اضغط "إضافة للشاشة الرئيسية" ويصير مثل تطبيق. ولو تغيّر عنوان الكمبيوتر، الصفحة نفسها تعرض لك الرابط الثابت (باسم جهازك) عشان ما تحتاج تصوّر من جديد.</p>${r.fixed ? `<p class="hint">الرابط الثابت: <b dir="ltr">${esc(r.fixed)}</b></p>` : ''}<button class="btn ghost sm" id="remoteNew">🔄 رابط جديد (يقفل القديم)</button></div></div>` : '';
   $('#remoteNew')?.addEventListener('click', async () => drawRemote(await pv.remoteNewKey()));
+  $('#remoteNetOn').checked = !!r.net; $('#remoteNetOn').disabled = !r.on;
+  $('#remoteNetBox').innerHTML = r.on && r.net ? `<div class="share-body"><div class="qr">${r.netQr || ''}</div><div><p class="hint">هذا الرابط يشتغل من أي مكان (البرنامج لازم يكون شغّال على الكمبيوتر). الصور والحلقات تفتح بس على شبكة البيت.</p><b dir="ltr" class="share-url">${esc(r.netUrl || '')}</b></div></div>` : '';
+  remoteNet(r.on && r.net, r.key);
 }
+$('#remoteNetOn').onchange = async () => { const r = await pv.remoteNet($('#remoteNetOn').checked); drawRemote(r); };
+// "from anywhere": the phone talks through a free relay; the app here answers it (same key as the Wi-Fi link)
+let rnet = null;
+function remoteNet(on, key) {
+  if (!on || !key) { rnet?.close(); rnet = null; return; }
+  if (rnet && rnet.key === key) return;
+  rnet?.close();
+  const o = { key, ws: null, hb: 0, closed: false, close() { this.closed = true; clearInterval(this.hb); try { this.ws?.close(); } catch {} } };
+  rnet = o;
+  const connect = () => {
+    if (o.closed) return;
+    const ws = new WebSocket(`wss://0.peerjs.com/peerjs?key=peerjs&id=sbr-${key}&token=${Math.random().toString(36).slice(2, 12)}&version=1.5.4`);
+    o.ws = ws;
+    ws.onopen = () => { clearInterval(o.hb); o.hb = setInterval(() => { try { ws.send('{"type":"HEARTBEAT"}'); } catch {} }, 5000); };
+    ws.onmessage = async (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.type === 'OPEN') pv.log('phone remote: reachable from anywhere');
+      else if (m.type === 'ID-TAKEN') { ws.onclose = null; ws.close(); setTimeout(connect, 8000); }
+      else if (m.type === 'CANDIDATE' && m.payload?.sb?.t === 'api') {
+        const q = m.payload.sb;
+        const r = await pv.remoteCall(q.kind, q.body).catch(() => ({ ok: false }));
+        const txt = JSON.stringify(r), size = 12000, n = Math.max(1, Math.ceil(txt.length / size));
+        for (let i = 0; i < n; i++) ws.send(JSON.stringify({ type: 'CANDIDATE', dst: m.src, payload: { sb: { t: 'res', id: q.id, i, n, d: txt.slice(i * size, (i + 1) * size) }, connectionId: 'sb' } }));
+      }
+    };
+    ws.onclose = () => { clearInterval(o.hb); if (!o.closed) setTimeout(connect, 5000); };
+  };
+  connect();
+}
+setTimeout(() => { if (inElectron) pv.remoteInfo().then((r) => remoteNet(r.on && r.net, r.key)).catch(() => {}); }, 6000);
 $('#remoteOn').onchange = async () => { const r = await pv.remoteSet($('#remoteOn').checked); drawRemote(r); pushRemote(); };
-function pushRemote() {
-  const games = allItems().filter((i) => isGameItem(i) && !i.owned && (!i.rom || true)).slice(0, 400).map((i) => {
-    const img = i.noArt ? '' : (i.image || '');
-    return { id: i.id, name: i.name, img: img && !isDrivePath(img) ? img : (img ? 'local' : ''), imgPath: img && isDrivePath(img) ? img : '' };
-  });
+let remoteShows = [], remoteShowsAt = 0;
+async function pushRemote() {
+  const pic = (i) => (i.noArt ? '' : (i.image || i.hero || ''));
+  const games = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store).slice(0, 400).map((i) => ({ id: i.id, name: i.name, img: pic(i) }));
+  const lib = [
+    ...(data.torLib || []).filter((t) => t.state !== 'done').map((t) => ({ id: t.id, name: t.title, img: t.image || '', tor: true, state: t.state, pct: t.pct })),
+    ...allItems().filter((i) => isGameItem(i) && i.owned).slice(0, 300).map((i) => ({ id: i.id, name: i.name, img: pic(i), owned: true })),
+  ];
+  const w = page('watch');
+  const watch = (w?.items || []).map((i) => ({ id: i.id, name: i.name, img: pic(i), url: isWeb(i.lastUrl || i.target) ? (i.lastUrl || i.target) : '', note: i.lastNote || '', time: i.lastTime || 0 }));
+  if (window.Series && Date.now() - remoteShowsAt > 10 * 60000 && w?.folders?.length && !window.SB_PAUSED?.()) { remoteShowsAt = Date.now(); try { remoteShows = await Series.scanAll(); } catch { remoteShows = []; } }
+  const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
   const torrents = (data.torLib || []).filter((t) => t.state && t.state !== 'saved').slice(0, 20).map((t) => ({ title: t.title, state: t.state, pct: t.pct }));
-  pv.remoteState({ games, torrents, name: data.user?.name || '' });
+  const ak = window.Akai?.look?.() || {};
+  const shots = window.Shots?.recent?.(80) || [];
+  pv.remoteState({ games, lib, watch, shows, shots, torrents, name: data.user?.name || '', lang: data.settings.lang || 'ar', akai: { look: { hat: ak.hat, color: ak.color, hair: ak.hair, girl: ak.girl }, hats: ak.hats, colors: ak.colors, hairs: ak.hairs } });
 }
-setInterval(pushRemote, 15000); setTimeout(pushRemote, 4000);
+setInterval(() => { if (!window.SB_PAUSED?.()) pushRemote(); }, 15000); setTimeout(pushRemote, 4000);
 pv.onRemote((c) => {
   if (c.type === 'launch') { const f = findItem(c.id); if (f) { launchItem(f.item); toast(`📱 ${f.item.name} من الجوال`); } }
+  else if (c.type === 'torDl') { const t = (data.torLib || []).find((x) => x.id === c.id); if (t && t.state === 'saved') pv.torAdd(t.file, { quiet: true }).then((r) => { if (r.ok) { t.state = 'downloading'; t.pct = 0; save(); toast(`📱 ⬇ بدأ تحميل ${t.title}`); if (currentPageId === 'games' && gamesTab === 'tor') renderPage(); } else toast('ما قدرت: ' + r.error); }); }
+  else if (c.type === 'showPlay') { window.Series?.playFile(c.dir, c.file); toast('📱 من الجوال'); }
+  else if (c.type === 'epProg') window.Series?.progress(c.dir, c.file, c.t, c.d);
+  else if (c.type === 'akai') { window.Akai?.setLook?.(c.look); window.Akai?.say?.('لبس جديد؟ 😎'); pushRemote(); }
   else if (c.type === 'toast') toast(c.msg);
   else if (c.type === 'say') window.Akai?.say(c.text);
 });
@@ -2851,7 +3093,7 @@ function renderStats(seg) {
 }
 
 // ---------- the watch screen: its link (copy it, or pin it as its own tile) ----------
-$('#wvCopy').onclick = () => { const u = $('#wvUrl').value; if (!u) return; navigator.clipboard.writeText(u).then(() => toast('🔗 نسخت الرابط')).catch(() => { $('#wvUrl').select(); document.execCommand('copy'); toast('🔗 نسخت الرابط'); }); };
+$('#wvCopy').onclick = async () => { const u = $('#wvUrl').value; if (!u) return; const ok = pv.copyText ? await pv.copyText(u) : await navigator.clipboard.writeText(u).then(() => true, () => false); toast(ok ? '🔗 نسخت الرابط: الصقه وين ما تبي' : 'ما قدرت أنسخ'); };
 $('#wvUrl').onclick = () => $('#wvUrl').select();
 // The show's name out of a watch-site page: "مشاهدة مسلسل Friends الموسم الاول الحلقة 1 مترجمة - توب سينما" → "Friends"
 function showNameOf(title, url) {
@@ -2913,9 +3155,11 @@ function renderMods(p) {
   $('#modsPick').onclick = async () => { const f = await pv.pickFile('file'); if (f) modsDrop([f]); };
   $('#modsFolder').onclick = () => paths.mods && pv.launch(paths.mods);
 }
-function modsDrop(files) {
+async function modsDrop(files) {
   if (!files.length) return;
-  const games = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store).sort((a, b) => (b.lastOpened || b.lastPlayed || 0) - (a.lastOpened || a.lastPlayed || 0));
+  for (const f of files) if (!(await safeFile(f))) return toast('ما ركّبته 👍');
+  // games first, then anything else on this PC (a game added as a shortcut on the apps page counts too)
+  const games = allItems().filter((i) => !i.owned && !i.store && !isWeb(i.target || '') && (isGameItem(i) || /^[a-z]:\\|^steam:/i.test(i.target || ''))).sort((a, b) => (isGameItem(b) - isGameItem(a)) || (b.lastOpened || b.lastPlayed || 0) - (a.lastOpened || a.lastPlayed || 0));
   const d = document.createElement('dialog'); d.className = 'mods-pick';
   d.innerHTML = `<h2>🧩 على أي لعبة؟</h2><p class="hint">${files.map((f) => esc(f.split(/[\\/]/).pop())).join('، ')}</p>
     <input id="mpQ" placeholder="دوّر على اللعبة…" autocomplete="off">
@@ -2936,7 +3180,7 @@ async function installMods(g, files) {
     const r = await pv.modsInstall({ rom: g.rom || '', console: g.console || g.platform || '', target: g.target || '', args: [].concat(g.args || []), name: g.name }, src).catch((e) => ({ ok: false, msg: e.message }));
     (data.modsLog ||= []).push({ t: Date.now(), mod: src.split(/[\\/]/).pop(), game: g.name, ok: !!r?.ok, msg: r?.msg || '' });
     save();
-    toast(r?.ok ? `✓ ${r.msg || 'تركّب'}` : `✗ ${r?.msg || 'ما قدرت أركّبه'}`);
+    toast(r?.ok ? `✓ ${r.msg || 'تركّب'}` : `✗ ${r?.msg || 'ما قدرت أركّبه'}`, 9000);
   }
   if (currentPageId && page()?.type === 'mods') renderPage();
 }

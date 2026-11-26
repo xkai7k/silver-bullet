@@ -8,6 +8,7 @@ const isDrivePath = (t) => /^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('\\\\');
 
 // Background tunes should start without waiting for a click.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('js-flags', '--expose-gc'); // lets the app hand memory back when it goes to rest
 
 let mainWin = null;
 const SRC_DIR = process.env.PREVIEW_SRC || __dirname; // editable folder on the desktop
@@ -163,8 +164,18 @@ async function installApp() {
 ipcMain.handle('data:load', () => {
   try { return JSON.parse(fs.readFileSync(dataFile(), 'utf8')); } catch { return null; }
 });
+// Saving never holds the app up: written in the background (to a temp file, then swapped in, so a crash can't leave half a file)
+let saveQ = Promise.resolve(), saveSlowLogged = 0;
 ipcMain.handle('data:save', (_e, data) => {
-  fs.writeFileSync(dataFile(), JSON.stringify(data, null, 2), 'utf8');
+  const t0 = Date.now();
+  const text = JSON.stringify(data);
+  saveQ = saveQ.then(async () => {
+    const f = dataFile(), tmp = f + '.tmp';
+    await fs.promises.writeFile(tmp, text, 'utf8');
+    await fs.promises.rename(tmp, f).catch(async () => { await fs.promises.writeFile(f, text, 'utf8'); });
+  }).catch((e) => log('save failed', e.message));
+  const ms = Date.now() - t0;
+  if ((ms > 150 || text.length > 4e6) && Date.now() - saveSlowLogged > 600000) { saveSlowLogged = Date.now(); log(`save: ${Math.round(text.length / 1024)} KB took ${ms} ms`); }
   return true;
 });
 
@@ -302,6 +313,36 @@ ipcMain.handle('file:icon', async (_e, p) => {
     return img.isEmpty() ? null : img.toDataURL();
   } catch { return null; }
 });
+// ---------- a safety check before a file joins the app: Windows' own antivirus (Defender) scans it ----------
+function defenderExe() {
+  const cands = [];
+  try { const plat = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Microsoft', 'Windows Defender', 'Platform'); for (const v of fs.readdirSync(plat).sort().reverse()) cands.push(path.join(plat, v, 'MpCmdRun.exe')); } catch {}
+  cands.push(path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Windows Defender', 'MpCmdRun.exe'));
+  return cands.find((c) => { try { return fs.existsSync(c); } catch { return false; } }) || '';
+}
+// the drives on this PC with their free space (to pick where a game installs)
+ipcMain.handle('drives:list', () => {
+  const out = [];
+  for (const L of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
+    const root = L + ':\\';
+    try { if (!fs.existsSync(root)) continue; const st = fs.statfsSync(root); out.push({ root, free: st.bavail * st.bsize, total: st.blocks * st.bsize }); } catch {}
+  }
+  return out;
+});
+const scanCache = new Map();
+ipcMain.handle('scan:file', async (_e, file) => {
+  try {
+    const st = fs.statSync(file), key = file.toLowerCase() + '|' + st.size + '|' + st.mtimeMs;
+    if (scanCache.has(key)) return scanCache.get(key);
+    const exe = defenderExe(); if (!exe) return { ok: true, unavailable: true };
+    const t0 = Date.now();
+    const r = await Promise.race([run(exe, ['-Scan', '-ScanType', '3', '-File', file, '-DisableRemediation'], { full: true }), new Promise((res) => setTimeout(() => res({ code: -2 }), 90000))]);
+    const threat = (/Threat\s*:\s*(.+)/i.exec(r.out || '') || [])[1]?.trim() || '';
+    const res = r.code === 2 || threat ? { ok: false, threat: threat || 'تهديد' } : r.code === 0 ? { ok: true } : { ok: true, unavailable: true };
+    log(`scan ${path.basename(file)}: ${res.ok ? (res.unavailable ? 'could not scan (' + r.code + ')' : 'clean') : 'THREAT ' + res.threat} in ${Date.now() - t0}ms`);
+    scanCache.set(key, res); return res;
+  } catch (e) { return { ok: true, unavailable: true, error: e.message }; }
+});
 ipcMain.handle('file:info', (_e, p) => {
   try {
     const st = fs.statSync(p);
@@ -367,18 +408,20 @@ const EMU_CATALOG = [
   { id: 'pcsx2', name: 'PCSX2', desc: 'محاكي بلايستيشن 2 — سوني', platform: 'ps2', exe: /^pcsx2-qt\.exe$/i, gh: 'PCSX2/pcsx2', asset: /windows-x64-Qt\.7z$/i,
     existing: ['C:\\Program Files\\PCSX2\\pcsx2-qt.exe'] },
   { id: 'rpcs3', name: 'RPCS3', desc: 'محاكي بلايستيشن 3 — سوني', platform: 'ps3', exe: /^rpcs3\.exe$/i, gh: 'RPCS3/rpcs3-binaries-win', asset: /_win64.*\.7z$/i, existing: ['C:\\RPCS3\\rpcs3.exe'] },
-  { id: 'shadps4', name: 'shadPS4', desc: 'محاكي بلايستيشن 4 — سوني (تجريبي)', exe: /^shadps4.*\.exe$/i, gh: 'shadps4-emu/shadPS4', asset: /win(64|dows).*\.zip$/i, prefer: /qt/i },
+  { id: 'shadps4', name: 'shadPS4', desc: 'محاكي بلايستيشن 4 — سوني (تجريبي)', exe: /^shadps4.*\.exe$/i, gh: 'shadps4-emu/shadPS4', asset: /win(64|dows).*\.zip$/i, prefer: /qt/i, localOnly: true }, // too early to run most games: used only if you installed it yourself
   { id: 'ppsspp', name: 'PPSSPP', desc: 'محاكي PSP — سوني (الجهاز المحمول)', platform: 'psp', exe: /^ppssppwindows64\.exe$/i,
     url: async () => { const h = await (await net.fetch('https://www.ppsspp.org/download/')).text(); const m = /\/files\/[\d_]+\/ppsspp_win\.zip/i.exec(h); return m && 'https://www.ppsspp.org' + m[0]; },
     file: 'ppsspp_win.zip', existing: ['C:\\Program Files\\PPSSPP\\PPSSPPWindows64.exe'] },
-  { id: 'vita3k', name: 'Vita3K', desc: 'محاكي بلايستيشن فيتا — سوني (تجريبي)', exe: /^vita3k\.exe$/i, gh: 'Vita3K/Vita3K', asset: /^windows-latest\.zip$/i, tag: 'continuous' },
+  { id: 'vita3k', name: 'Vita3K', desc: 'محاكي بلايستيشن فيتا — سوني (تجريبي)', exe: /^vita3k\.exe$/i, gh: 'Vita3K/Vita3K', asset: /^windows-latest\.zip$/i, tag: 'continuous', localOnly: true }, // same: experimental
   { id: 'dolphin', name: 'Dolphin', desc: 'محاكي جيم كيوب و Wii — نينتندو', platform: 'gc', exe: /^dolphin\.exe$/i,
     url: async () => { let h = ''; try { const r = await net.fetch('https://dolphin-emu.org/download/', { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36' } }); h = await r.text(); } catch {} const m = /(?:https:)?\/\/dl\.dolphin-emu\.org\/(?:releases|builds)\/[\w./-]+?-x64\.7z/i.exec(h); return m ? (m[0].startsWith('//') ? 'https:' + m[0] : m[0]) : 'https://dl.dolphin-emu.org/releases/2609b/dolphin-2609b-x64.7z'; },
     file: 'dolphin.7z', existing: ['C:\\Program Files\\Dolphin\\Dolphin.exe', 'C:\\Program Files\\Dolphin-x64\\Dolphin.exe'] },
   { id: 'cemu', name: 'Cemu', desc: 'محاكي Wii U — نينتندو', exe: /^cemu\.exe$/i, gh: 'cemu-project/Cemu', asset: /windows-x64\.zip$/i },
   { id: 'gopher64', name: 'gopher64', desc: 'محاكي نينتندو 64', platform: 'n64', exe: /^gopher64.*\.exe$/i, gh: 'gopher64/gopher64', asset: /windows.*(x86_64|x64).*\.(exe|zip)$/i },
   { id: 'snes9x', name: 'Snes9x', desc: 'محاكي سوبر نينتندو (SNES)', platform: 'snes', exe: /^snes9x-x64\.exe$/i, gh: 'snes9xgit/snes9x', asset: /win32-x64\.zip$/i },
-  { id: 'mesen', name: 'Mesen', desc: 'محاكي نينتندو (NES) وسوبر نينتندو وجيم بوي', exe: /^mesen\.exe$/i, gh: 'SourMesen/Mesen2', asset: /windows.*\.zip$/i },
+  { id: 'mesen', name: 'Mesen', desc: 'محاكي نينتندو (NES) وسوبر نينتندو وجيم بوي', exe: /^mesen\.exe$/i, gh: 'SourMesen/Mesen2', asset: /windows.*\.zip$/i, localOnly: true }, // needs .NET installed: fails on many PCs, ares covers the same
+  { id: 'ares', name: 'ares', desc: 'محاكي شامل: نينتندو (NES، سوبر، 64، جيم بوي)، سيغا (ميغا درايف، ماستر سيستم)، PC Engine وغيرها', exe: /^ares\.exe$/i, gh: 'ares-emulator/ares', asset: /^ares-windows-x64\.zip$/i },
+  { id: 'stella', name: 'Stella', desc: 'محاكي أتاري 2600', exe: /^stella\.exe$/i, gh: 'stella-emu/stella', asset: /windows\.zip$/i },
   { id: 'mgba', name: 'mGBA', desc: 'محاكي جيم بوي أدفانس وجيم بوي — نينتندو', platform: 'gba', exe: /^mgba\.exe$/i, gh: 'mgba-emu/mgba', asset: /win64\.7z$/i },
   { id: 'melonds', name: 'melonDS', desc: 'محاكي نينتندو DS', platform: 'nds', exe: /^melonds\.exe$/i, gh: 'melonDS-emu/melonDS', asset: /windows.*x86_64.*\.zip$|win.*x64.*\.zip$/i },
   { id: 'azahar', name: 'Azahar', desc: 'محاكي نينتندو 3DS', exe: /^azahar\.exe$/i, gh: 'azahar-emu/azahar', asset: /^azahar-windows-msvc-[\d.]+\.zip$/i },
@@ -440,7 +483,7 @@ function run(cmd, args, opts = {}) {
     p.stdout?.on('data', (d) => { out += d; if (out.length > 20000) out = out.slice(-8000); });
     p.on('error', (e) => resolve({ code: -1, err: e.message }));
     // the end of an error message is the useful part (Python puts the actual error last)
-    p.on('exit', (code) => resolve({ code, err: err.length > 700 ? err.slice(0, 150) + ' … ' + err.slice(-550) : err, out: out.slice(-600) }));
+    p.on('exit', (code) => resolve({ code, err: err.length > 700 ? err.slice(0, 150) + ' … ' + err.slice(-550) : err, out: opts.full ? out : out.slice(-600) }));
   });
 }
 async function download(url, file, onPct) {
@@ -1282,7 +1325,7 @@ const SKIP_DIR = /^(windows|program files|programdata|\$recycle\.bin|system volu
 const NOT_GAMES = /[\\/](emulators|software|tools)[\\/]|cache|shader|[\\/]temp|firmware|[\\/]dlc|[\\/]updates?[\\/]?|[\\/]saves?[\\/]?|[\\/]bios|texture|[\\/]logs?[\\/]?$/i;
 ipcMain.handle('emu:discover', () => {
   const home = app.getPath('home');
-  const roots = [path.join(home, 'Games'), path.join(home, 'Documents'), path.join(home, 'Downloads'), app.getPath('desktop'), 'D:\\', 'E:\\', 'F:\\', 'C:\\Games', 'C:\\Emulators']
+  const roots = ['C:\\Retro Project', path.join(home, 'Games'), path.join(home, 'Documents'), path.join(home, 'Downloads'), app.getPath('desktop'), 'D:\\', 'E:\\', 'F:\\', 'C:\\Games', 'C:\\Emulators']
     .filter((r, i, a) => a.indexOf(r) === i && fs.existsSync(r));
   const folders = new Map(), emus = [];
   let visited = 0;
@@ -1324,8 +1367,13 @@ ipcMain.handle('app:autostart', (_e, on) => {
     ? { openAtLogin: !!on, path: path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'wscript.exe'), args: [`"${vbs}"`] }
     : { openAtLogin: !!on };
   try { app.setLoginItemSettings(opts); } catch (e) { log('autostart failed', e.message); }
-  return app.getLoginItemSettings(opts).openAtLogin;
+  const st = app.getLoginItemSettings(opts);
+  // Windows can switch it off by itself (Settings → Apps → Startup): say so instead of showing it as on
+  const blocked = !!on && st.openAtLogin && st.executableWillLaunchAtLogin === false;
+  log(`autostart ${on ? 'on' : 'off'}: registered ${st.openAtLogin}${blocked ? ', but Windows has it switched off in Startup apps' : ''}`);
+  return blocked ? 'blocked' : st.openAtLogin;
 });
+ipcMain.handle('app:startupSettings', () => shell.openExternal('ms-settings:startupapps'));
 
 // ---------- Pictures for websites (watch page tiles): the page's own share image or icon ----------
 ipcMain.handle('web:meta', async (_e, url) => {
@@ -1502,9 +1550,97 @@ setTimeout(() => checkUpdate(), 40 * 1000);
 setInterval(() => checkUpdate(), 6 * 60 * 60 * 1000);
 ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.handle('update:restart', () => { byeSaid = true; app.relaunch(fs.existsSync(INSTALLED_EXE) ? { execPath: INSTALLED_EXE, args: [] } : undefined); app.exit(0); });
-ipcMain.handle('game:running', () => gamesRunning > 0);
+ipcMain.handle('game:running', () => gamesRunning > 0 || restState.game);
+
+// ---------- Rest ("سكون"): while a game or a full-screen video is in front, the app goes quiet ----------
+// A tiny helper (compiled once on this PC with Windows' own C# compiler, a few KB in memory) tells what is in front.
+// Only Spotify control and Akai's music commands keep working; everything else waits, and memory is handed back.
+const restState = { game: false, fg: '', fs: 0, reason: '' };
+let sbw = null;
+function helperExe(name = 'sbwatch') {
+  const dir = path.join(app.getPath('userData'), 'helper'); const exe = path.join(dir, name + '.exe'); const src = [path.join(__dirname, 'ps', name + '.cs'), path.join(SRC_DIR, 'ps', name + '.cs')].find((f) => fs.existsSync(f)); if (!src) return Promise.resolve(null);
+  try { if (fs.existsSync(exe) && fs.statSync(exe).mtimeMs >= fs.statSync(src).mtimeMs) return Promise.resolve(exe); } catch {}
+  fs.mkdirSync(dir, { recursive: true });
+  const csc = ['Framework64', 'Framework'].map((f) => path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', f, 'v4.0.30319', 'csc.exe')).find((p) => fs.existsSync(p));
+  if (!csc) return Promise.resolve(null);
+  return new Promise((res) => execFile(csc, ['/nologo', '/optimize+', '/target:exe', '/platform:anycpu', `/out:${exe}`, src], { windowsHide: true, timeout: 60000 }, (err, out) => { if (err) log('helper build failed', String(out || err.message).slice(0, 400)); res(err ? null : exe); }));
+}
+const SELF = /^(silver bullet|preview|electron|explorer|searchhost|startmenuexperiencehost|shellexperiencehost|textinputhost|lockapp|applicationframehost)\.exe$/i;
+const NOT_GAME = /^(chrome|msedge|brave|firefox|opera|discord|spotify|telegram|whatsapp|vlc|mpc-hc64|potplayermini64|code|notepad|explorer|taskmgr|obs64|steam|epicgameslauncher|eadesktop|battle\.net|nvidia app|powerpnt|winword|excel)\.exe$/i;
+function setRest(next, why) {
+  if (restState.game === next) return;
+  restState.game = next; restState.reason = why;
+  log(next ? `rest: on (${why})` : 'rest: off');
+  try { mainWin?.webContents.setBackgroundThrottling(true); mainWin?.webContents.send('rest', next ? 'game' : '', why); } catch {}
+}
+async function startWatcher() {
+  if (process.platform !== 'win32' || sbw) return;
+  const exe = await helperExe(); if (!exe) { log('helper: no C# compiler, rest follows launched games only'); return; }
+  sbw = spawn(exe, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+  log('rest helper running', path.basename(exe));
+  sbw.on('exit', (c) => { log('rest helper stopped', c); sbw = null; });
+  let buf = '';
+  sbw.stdout.on('data', (d) => {
+    buf += d; let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      let m; try { m = JSON.parse(line); } catch { continue; }
+      restState.fg = m.fg; restState.fs = m.fs;
+      const ours = SELF.test(m.fg) || mainWin?.isFocused();
+      // a game: Windows says "full-screen game" (3), or something full screen that isn't a browser/player, or a game we started is in front
+      const game = !ours && (m.fs === 3 || (m.fs === 2 && !NOT_GAME.test(m.fg)) || (gamesRunning > 0 && !NOT_GAME.test(m.fg)));
+      setRest(game, m.fg);
+    }
+  });
+}
+// "start from the phone": a tiny program that starts with Windows and answers the phone link while the app is closed
+async function wakeHelper(on, key, port) {
+  const RUN = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+  if (!on) { execFile('reg', ['delete', RUN, '/v', 'SilverBulletWake', '/f'], { windowsHide: true }, () => {}); execFile('taskkill', ['/IM', 'sbwake.exe', '/F'], { windowsHide: true }, () => {}); return false; }
+  const exe = await helperExe('sbwake'); if (!exe) { log('wake helper: could not build'); return false; }
+  const vbs = path.join(SRC_DIR, 'launch.vbs');
+  const [prog, ...args] = fs.existsSync(INSTALLED_EXE) ? [INSTALLED_EXE] : fs.existsSync(vbs) ? [path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'wscript.exe'), vbs] : [process.execPath];
+  const q = (x) => `"${x}"`;
+  const cmd = [exe, key, String(port), prog, ...args].map(q).join(' ');
+  execFile('reg', ['add', RUN, '/v', 'SilverBulletWake', '/t', 'REG_SZ', '/d', cmd, '/f'], { windowsHide: true }, (err) => log('wake helper', err ? 'register failed ' + err.message : 'on (starts with Windows)'));
+  try { spawn(exe, [key, String(port), prog, ...args], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch (e) { log('wake helper start', e.message); }
+  return true;
+}
+app.whenReady().then(() => setTimeout(() => startWatcher().catch((e) => log('rest helper failed', e.message)), 8000));
+app.on('will-quit', () => { try { sbw?.kill(); } catch {} });
+// A small note in the bottom-left corner that shows even over a game (low battery…): its own tiny window, never takes focus
+let noteWin = null, noteT = null;
+ipcMain.handle('overlay:note', (_e, icon, title, body) => {
+  try {
+    const d = screen.getPrimaryDisplay().workArea;
+    if (!noteWin || noteWin.isDestroyed()) {
+      noteWin = new BrowserWindow({ width: 380, height: 96, x: d.x + 18, y: d.y + d.height - 96 - 18, frame: false, transparent: true, resizable: false, movable: false,
+        focusable: false, skipTaskbar: true, alwaysOnTop: true, show: false, hasShadow: false, webPreferences: { contextIsolation: true, nodeIntegration: false } });
+      noteWin.setAlwaysOnTop(true, 'screen-saver'); noteWin.setIgnoreMouseEvents(true); noteWin.setVisibleOnAllWorkspaces?.(true);
+    }
+    const esc = (x) => String(x || '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent;font-family:Segoe UI,Tahoma,sans-serif;direction:rtl"><div style="margin:6px;display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:16px;background:rgba(16,18,26,.92);color:#fff;border:1px solid rgba(255,90,90,.6);box-shadow:0 8px 30px rgba(0,0,0,.5)"><div style="font-size:30px">${esc(icon)}</div><div><b style="font-size:15px;display:block">${esc(title)}</b><span style="font-size:13px;opacity:.85" dir="auto">${esc(body)}</span></div></div></body>`;
+    noteWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    noteWin.showInactive();
+    clearTimeout(noteT); noteT = setTimeout(() => { try { noteWin.hide(); } catch {} }, 9000);
+    return true;
+  } catch (e) { log('note failed', e.message); return false; }
+});
+ipcMain.handle('rest:wake', () => { setRest(false, 'esc'); return true; });
+// memory, measured: logged now and then so a heavy part shows up
+function memLog(tag) {
+  try {
+    const ms = app.getAppMetrics().map((p) => ({ t: p.type + (p.name ? ':' + p.name : ''), mb: Math.round((p.memory?.workingSetSize || 0) / 1024) }));
+    const total = ms.reduce((a, x) => a + x.mb, 0);
+    log(`memory ${tag}: ${total} MB — ` + ms.sort((a, b) => b.mb - a.mb).map((x) => `${x.t} ${x.mb}`).join(', '));
+  } catch {}
+}
+app.whenReady().then(() => { setTimeout(() => memLog('start'), 90000); setInterval(() => memLog('now'), 30 * 60 * 1000); });
+ipcMain.handle('mem:log', (_e, tag) => memLog(tag || 'asked'));
+
 // Photos / clips list → delete: goes to the Recycle Bin (you can bring it back)
 // Every saved path still there? (a game moved or uninstalled, a picture deleted, an emulator folder renamed)
+ipcMain.handle('lnk:read', (_e, f) => { try { const l = shell.readShortcutLink(f); let dir = []; try { dir = fs.readdirSync(path.dirname(l.target)).slice(0, 80); } catch {} return { ...l, dir }; } catch (e) { return { error: e.message }; } });
 ipcMain.handle('paths:check', async (_e, items) => {
   const local = (p) => typeof p === 'string' && /^[a-z]:[\\/]|^\\\\/i.test(p);
   const out = [];
@@ -1848,7 +1984,20 @@ app.on('web-contents-created', (_e, contents) => {
     } catch {}
     return { action: 'deny' };
   });
+  // right-click inside a site: copy the link / text, paste, open it in your browser (sites in the app had no menu at all)
+  contents.on('context-menu', (_ev, p) => {
+    const { Menu, clipboard } = require('electron');
+    const t = [];
+    if (p.linkURL) t.push({ label: '🔗 انسخ الرابط', click: () => clipboard.writeText(p.linkURL) }, { label: '🌐 افتح الرابط بالمتصفح', click: () => shell.openExternal(p.linkURL) });
+    if (p.selectionText) t.push({ label: '📋 نسخ', click: () => clipboard.writeText(p.selectionText) });
+    if (p.isEditable) t.push({ label: '📥 لصق', click: () => contents.paste() });
+    if (p.mediaType === 'image' && p.srcURL) t.push({ label: '🖼 انسخ رابط الصورة', click: () => clipboard.writeText(p.srcURL) });
+    t.push({ type: 'separator' }, { label: '🔗 انسخ رابط الصفحة', click: () => clipboard.writeText(contents.getURL()) }, { label: '↻ تحديث', click: () => contents.reload() });
+    Menu.buildFromTemplate(t).popup();
+  });
 });
+ipcMain.handle('clip:image', (_e, src) => { try { const { clipboard, nativeImage } = require('electron'); const img = /^data:/.test(src) ? nativeImage.createFromDataURL(src) : nativeImage.createFromPath(String(src).replace(/^file:\/+/, '')); if (img.isEmpty()) return false; clipboard.writeImage(img); return true; } catch { return false; } });
+ipcMain.handle('clip:write', (_e, text) => { try { require('electron').clipboard.writeText(String(text || '')); return true; } catch { return false; } });
 
 // Only one Preview window: opening it again just brings the existing one to the front.
 const gotLock = app.requestSingleInstanceLock();
@@ -1860,7 +2009,7 @@ function copyPageFiles() { // html / css / js / ps from the project folder into 
   for (const [from, to] of [[SRC_DIR, __dirname], [path.join(SRC_DIR, 'ps'), path.join(__dirname, 'ps')], [path.join(SRC_DIR, 'assets'), path.join(__dirname, 'assets')]]) {
     let list = []; try { list = fs.readdirSync(from); } catch { continue; }
     try { fs.mkdirSync(to, { recursive: true }); } catch {}
-    for (const f of list.filter((x) => /\.(html|css|js|ps1|png|ico|svg)$/i.test(x) && !/^(main|preload|roms|boot)\.js$/i.test(x))) { try { fs.copyFileSync(path.join(from, f), path.join(to, f)); } catch {} }
+    for (const f of list.filter((x) => /\.(html|css|js|ps1|cs|png|ico|svg)$/i.test(x) && !/^(main|preload|roms|boot)\.js$/i.test(x))) { try { fs.copyFileSync(path.join(from, f), path.join(to, f)); } catch {} }
   }
 }
 const STARTED_STAMP = codeStamp();
@@ -1894,6 +2043,7 @@ function watchSnapRequests() {
         }
         app.relaunch(fs.existsSync(INSTALLED_EXE) ? { execPath: INSTALLED_EXE, args: [] } : undefined); app.exit(0); return; }
       if (/^emutest\b/.test(cmd)) { emuSelfTest(); cmd = ''; }
+      if (/^ps:/.test(cmd)) { const f = path.join(SRC_DIR, 'ps', cmd.slice(3).trim().replace(/[^\w.-]/g, '') + '.ps1'); execFile('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', f], { windowsHide: true, timeout: 60000, maxBuffer: 4e6 }, (err, out, er) => log('ps result', path.basename(f), String(out || '').slice(0, 6000), String(er || (err && err.message) || '').slice(0, 1500))); cmd = ''; }
       if (/^emulog:/.test(cmd)) { emuLogTail(cmd.slice(7).trim()); cmd = ''; }
       if (/^playrom:/.test(cmd)) { const f = cmd.slice(8).trim(); roms?.launchFile?.(f).then((r) => log('playrom result:', r || 'started')); cmd = ''; }
       if (/^importdir:/.test(cmd)) { const d = cmd.slice(10).trim(); const n = roms?.importDir?.(d); log('import dir', d, n); cmd = ''; }
@@ -1925,8 +2075,9 @@ app.whenReady().then(() => {
   setTimeout(() => backupSaves().catch((e) => log('saves', e.message)), 45000);
   try {
     tor = require('./torrent').setupTorrents({ ipcMain, app, net, log, download, run, EMU_ROOT, getWin: () => mainWin, importGame: (f, mv) => roms?.importFile(f, mv) });
-    try { require('./remote')({ ipcMain, app, log, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w), lanAddress, qrSvgOf }); } catch (e) { log('phone remote failed', e.message); }
   } catch (e) { log('torrent setup failed', e.message); }
+  // the phone page works even if the torrent part failed to start
+  try { require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;

@@ -127,7 +127,7 @@
     svg(`<defs><linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b8fb0"/><stop offset="1" stop-color="#0b3e5c"/></linearGradient></defs>
       <rect x="0" y="600" width="1600" height="300" fill="url(#sea)"/>
       <path d="M1180 600 Q1260 520 1330 560 Q1400 470 1480 540 Q1540 520 1600 560 L1600 600 Z" fill="#2c6b3f" opacity=".85"/>
-      <g class="sway">${ship(520, 640, 0.9)}</g>`) +
+      <g class="sway">${ship(820, 700, 0.6)}</g>`) +
     `<div class="wave w1"></div><div class="wave w2"></div><div class="wave w3"></div>`;
   SCENES.najdi = () => `<div class="najdi-sky"></div><div class="moon najdi-moon"></div>` +
     parts('star', 50, () => `left:${R(0, 100)}%;top:${R(0, 40)}%;animation-duration:${R(2, 6)}s;animation-delay:-${R(0, 6)}s`) +
@@ -137,6 +137,34 @@
     `<div class="sadu"></div>` + parts('sand', 30, () => `left:${R(0, 100)}%;top:${R(50, 95)}%;animation-duration:${R(8, 18)}s;animation-delay:-${R(0, 18)}s`);
   SCENES.vintage = () => `<div class="lamp vintage-lamp"></div><div class="frames"><i></i><i></i><i></i></div><div class="grain"></div><div class="vignette"></div>` +
     parts('mote', 34, () => `left:${R(0, 100)}%;top:${R(0, 100)}%;animation-duration:${R(10, 24)}s;animation-delay:-${R(0, 20)}s`);
+  // ----- the night shift: a dark security office, a flickering lamp, static on the monitor, eyes in the doorway -----
+  SCENES.night = () => `<div class="nt-lamp"></div><div class="nt-dark"></div>` + svg(`
+      <rect x="0" y="0" width="1600" height="900" fill="#0b0a0d"/>
+      <path d="M0 0 H1600 V120 H0 Z" fill="#141118"/>
+      ${Array.from({ length: 16 }, (_, i) => `<rect x="${i * 100}" y="0" width="98" height="118" fill="${i % 2 ? '#17131b' : '#1b1620'}"/>`).join('')}
+      <rect x="120" y="230" width="250" height="520" fill="#050406"/><rect x="110" y="220" width="270" height="10" fill="#2a2430"/><rect x="110" y="220" width="10" height="530" fill="#2a2430"/><rect x="370" y="220" width="10" height="530" fill="#2a2430"/>
+      <rect x="1230" y="230" width="250" height="520" fill="#050406"/><rect x="1220" y="220" width="270" height="10" fill="#2a2430"/><rect x="1220" y="220" width="10" height="530" fill="#2a2430"/><rect x="1480" y="220" width="10" height="530" fill="#2a2430"/>
+      <g class="nt-eyes nt-e1"><circle cx="225" cy="420" r="7" fill="#fff4b0"/><circle cx="265" cy="420" r="7" fill="#fff4b0"/></g>
+      <g class="nt-eyes nt-e2"><circle cx="1335" cy="460" r="6" fill="#ff5a4a"/><circle cx="1372" cy="460" r="6" fill="#ff5a4a"/></g>
+      ${Array.from({ length: 12 }, (_, i) => `<rect x="${i * 134}" y="750" width="67" height="40" fill="#e9e6df" opacity=".08"/><rect x="${i * 134 + 67}" y="790" width="67" height="40" fill="#e9e6df" opacity=".08"/>`).join('')}
+      <rect x="0" y="760" width="1600" height="140" fill="#18141c" opacity=".7"/>
+      <rect x="560" y="720" width="480" height="24" fill="#2b2420"/><rect x="590" y="744" width="20" height="156" fill="#221c19"/><rect x="990" y="744" width="20" height="156" fill="#221c19"/>
+      <rect x="690" y="590" width="220" height="130" rx="10" fill="#1f1c22"/><rect x="704" y="602" width="192" height="104" fill="#0d1a12" class="nt-screen"/><rect x="782" y="720" width="36" height="10" fill="#1f1c22"/>
+      <text x="712" y="622" fill="#4cff86" font-family="monospace" font-size="14" class="nt-rec">● REC  CAM 04</text>
+      <circle cx="630" cy="706" r="12" fill="#3a3330"/><rect x="618" y="690" width="24" height="16" fill="#463c37"/>`) +
+    `<div class="nt-static"></div>`;
+  // ----- the magic school: a castle on a cliff under the moon, floating candles, shooting stars -----
+  SCENES.wizard = () => `<div class="moon wz-moon"></div>` + parts('star', 70, () => `left:${R(0, 100)}%;top:${R(0, 55)}%;animation-duration:${R(2, 6)}s;animation-delay:-${R(0, 6)}s`) +
+    `<i class="wz-shoot"></i>` + svg(`
+      <path d="M0 900 L0 690 Q300 640 560 700 Q760 740 980 660 L1600 640 L1600 900 Z" fill="#1a1530"/>
+      <g fill="#120f24">
+        <rect x="1040" y="430" width="380" height="240"/><rect x="1080" y="330" width="60" height="340"/><polygon points="1072,330 1110,240 1148,330"/>
+        <rect x="1210" y="290" width="70" height="380"/><polygon points="1200,290 1245,180 1290,290"/><rect x="1340" y="370" width="54" height="300"/><polygon points="1332,370 1367,290 1402,370"/>
+        <rect x="980" y="500" width="70" height="170"/><polygon points="972,500 1015,430 1058,500"/>
+      </g>
+      ${[[1100, 380], [1100, 430], [1236, 330], [1236, 390], [1236, 450], [1360, 410], [1160, 520], [1300, 520], [1010, 540], [1390, 470]].map(([x, y]) => `<rect x="${x}" y="${y}" width="10" height="16" rx="5" fill="#ffcf6b" class="wz-win"/>`).join('')}
+      <path d="M0 900 L0 780 Q400 740 800 790 T1600 770 L1600 900 Z" fill="#0d0b1a"/>`) +
+    parts('candle', 14, () => `left:${R(4, 70)}%;top:${R(8, 50)}%;animation-duration:${R(6, 11)}s;animation-delay:-${R(0, 10)}s`);
   // ----- extra life for older themes -----
   const add = (id, extra) => { const base = SCENES[id]; SCENES[id] = () => base() + extra(); };
   add('glass', () => parts('spark', 26, () => `left:${R(0, 100)}%;top:${R(0, 100)}%;animation-duration:${R(6, 14)}s;animation-delay:-${R(0, 14)}s`));

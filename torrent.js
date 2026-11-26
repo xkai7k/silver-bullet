@@ -107,15 +107,18 @@ function setupTorrents(ctx) {
       if (list.some((x) => x.status === 'active')) tick.lastBusy = Date.now();
     } catch (e) { if (!tick.warned) { tick.warned = true; log('torrent poll', e.message); } }
   }
-  ipcMain.handle('tor:add', (_e, what) => addTorrent(what));
-  async function addTorrent(what) {
+  ipcMain.handle('tor:add', (_e, what, dir) => addTorrent(what, dir));
+  async function addTorrent(what, dir) {
     try {
       await ensure();
       let gid;
-      if (/^magnet:/i.test(what)) gid = await rpc('aria2.addUri', [[what], { 'check-integrity': 'true' }]);
+      // a drive you picked for this game: its own "Silver Bullet Games" folder there
+      const opt = { 'check-integrity': 'true' };
+      if (dir && /^[a-z]:\\?$/i.test(dir)) { const d = path.join(dir.slice(0, 2) + '\\', 'Silver Bullet Games'); try { fs.mkdirSync(d, { recursive: true }); opt.dir = d; } catch (e) { log('install drive', e.message); } }
+      if (/^magnet:/i.test(what)) gid = await rpc('aria2.addUri', [[what], opt]);
       else if (fs.existsSync(what)) {
         try { fs.mkdirSync(OUT, { recursive: true }); const keep = path.join(OUT, path.basename(what)); if (keep !== what) fs.copyFileSync(what, keep); } catch {} // a copy, for repairs later
-        gid = await rpc('aria2.addTorrent', [fs.readFileSync(what).toString('base64'), [], { 'check-integrity': 'true' }]); // already downloaded? it's checked, not refused
+        gid = await rpc('aria2.addTorrent', [fs.readFileSync(what).toString('base64'), [], opt]); // already downloaded? it's checked, not refused
       } else return { error: 'الرابط أو الملف مو صحيح' };
       log('torrent added', gid);
       return { ok: true, gid };

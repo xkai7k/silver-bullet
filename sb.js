@@ -182,7 +182,10 @@
 
   // ---------- Ratings: rate everything, and a tier list you can share ----------
   const TIERS = [['S', '#ff7f7f'], ['A', '#ffbf7f'], ['B', '#ffdf7f'], ['C', '#bfff7f'], ['D', '#7fbfff'], ['F', '#bf7fff']];
-  const games = () => data.pages.filter((p) => ['games', 'emu', 'owned'].includes(p.type)).flatMap((p) => p.items.filter((i) => !i.emuId));
+  // only games: no stores, launchers, emulators, programs or companies
+  const NOT_GAME = /(^|\b)(steam|epic games( launcher)?|ea( app| desktop)?|origin|battle\.?net|ubisoft( connect)?|uplay|rockstar( games)?( launcher)?|gog( galaxy)?|xbox( app)?|microsoft store|riot client|launcher|playnite|retroarch|nvidia|geforce|discord|amazon games|itch\.io|heroic|lutris|parsec|moonlight|steamvr)(\b|$)/i;
+  window.isRateable = (i) => !i.emuId && !i.store && !i.tool && !NOT_GAME.test(i.name || '') && !/(launcher|setup|install|uninst)/i.test(String(i.target || '').split(/[\\/]/).pop()) && !/^(steam|com\.epicgames\.launcher|origin2?|uplay|battlenet|goggalaxy):\/\/(open|nav|store)/i.test(i.target || '');
+  const games = () => data.pages.filter((p) => ['games', 'emu', 'owned'].includes(p.type)).flatMap((p) => p.items.filter((i) => window.isRateable(i) && !(data.tierHidden || []).includes(i.id)));
   SB.ratingsView = null;
   SB.openRatings = (tab = 'tiers') => { closeWebIfOpen(); window.closeDetail?.(); currentPageId = null; SB.moodView = null; SB.ratingsView = tab; render(); };
   SB.renderRatings = () => {
@@ -192,11 +195,12 @@
     $('#backBtn').hidden = false;
     $('#title').innerHTML = '<span>⭐ التقييم</span>';
     $('#subtitle').textContent = `${list.length} لعبة في مكتبتك (المثبتة واللي عندك)`;
+    for (const t of Object.keys(data.tiers)) data.tiers[t] = data.tiers[t].filter((id) => { const it = findItem(id)?.item; return it && window.isRateable(it) && !(data.tierHidden || []).includes(id); });
     const placed = new Set(Object.values(data.tiers).flat());
     const cov = (i) => `<div class="tl-item" draggable="true" data-tl="${i.id}" title="${esc(i.name)}">${coverHtml(i)}</div>`;
     view.innerHTML = `
       <div class="chips"><button class="chip ${tab === 'tiers' ? 'on' : ''}" data-t="tiers">🏆 قائمة المستويات</button><button class="chip ${tab === 'rate' ? 'on' : ''}" data-t="rate">★ قيّم ألعابك</button>
-        ${tab === 'tiers' ? '<span class="spacer"></span><button class="btn ghost sm" id="tlShare">📤 شارك القائمة</button><button class="btn ghost sm" id="tlReset">↺ فضّها</button>' : ''}</div>
+        ${tab === 'tiers' ? `<span class="spacer"></span>${(data.tierHidden || []).length ? `<button class="btn ghost sm" id="tlUnhide">↩ رجّع المشالة (${data.tierHidden.length})</button>` : ''}<button class="btn ghost sm" id="tlShare">📤 شارك / احفظ الصورة</button><button class="btn ghost sm" id="tlReset">↺ فضّها</button>` : ''}</div>
       ${tab === 'tiers' ? `
         <div class="tierlist" id="tierlist">
           ${TIERS.map(([t, c]) => `<div class="tl-row"><div class="tl-tag" style="background:${c}">${t}</div><div class="tl-drop" data-tier="${t}">${(data.tiers[t] || []).map((id) => findItem(id)?.item).filter(Boolean).map(cov).join('')}</div></div>`).join('')}
@@ -215,7 +219,9 @@
     view.querySelectorAll('.tl-item').forEach((el) => {
       el.ondragstart = (e) => { e.dataTransfer.setData('text/sb-tier', el.dataset.tl); el.classList.add('lift'); };
       el.ondragend = () => el.classList.remove('lift');
-      el.onclick = (e) => showCtx(e, [...TIERS.map(([t]) => ({ label: `حطها في ${t}`, run: () => place(el.dataset.tl, t) })), { label: 'شيلها من القائمة', run: () => place(el.dataset.tl, '') }]);
+      const menu = (e) => showCtx(e, [...TIERS.map(([t]) => ({ label: `حطها في ${t}`, run: () => place(el.dataset.tl, t) })), { label: 'رجّعها تحت (بدون تقييم)', run: () => place(el.dataset.tl, '') }, { label: '🚫 شيلها من التقييم كلياً', danger: true, run: () => { (data.tierHidden ||= []).push(el.dataset.tl); place(el.dataset.tl, ''); } }]);
+      el.onclick = menu;
+      el.oncontextmenu = (e) => { e.preventDefault(); menu(e); }; // right-click: move it, or take it out of the ratings
     });
     view.querySelectorAll('.tl-drop').forEach((d) => {
       d.ondragover = (e) => { e.preventDefault(); d.classList.add('over'); };
@@ -224,6 +230,7 @@
     });
     $('#tlReset').onclick = () => { if (confirm('ترجع كل الألعاب لتحت؟')) { data.tiers = {}; save(); render(); } };
     $('#tlShare').onclick = shareTiers;
+    const uh = $('#tlUnhide'); if (uh) uh.onclick = () => { data.tierHidden = []; save(); render(); };
     return true;
   };
   function place(id, tier) {
@@ -262,8 +269,9 @@
     x.fillStyle = 'rgba(255,255,255,.45)'; x.font = `500 24px ${font}`; x.textAlign = 'center'; x.fillText('Silver Bullet', W / 2, H - 36);
     const file = await pv.saveCard(cv.toDataURL('image/png'), 'قائمة المستويات');
     const d = document.createElement('dialog'); d.id = 'tlShareDlg';
-    d.innerHTML = `<h2>📤 قائمتك جاهزة</h2><div class="card-prev"><img src="${cv.toDataURL('image/png')}"></div><div class="actions"><button class="btn ghost" data-f>📁 افتح المجلد</button><button class="btn ghost" data-x>إغلاق</button><button class="btn primary" data-p>📲 أرسلها لجوالي</button></div>`;
+    d.innerHTML = `<h2>📤 قائمتك جاهزة</h2><div class="card-prev"><img src="${cv.toDataURL('image/png')}"></div><div class="actions"><button class="btn ghost" data-x>إغلاق</button><span class="spacer"></span><button class="btn ghost" data-f>💾 مكان الصورة</button><button class="btn ghost" data-c>📋 انسخها (للصق في ديسكورد)</button><button class="btn primary" data-p>📲 أرسلها لجوالي</button></div>`;
     document.body.appendChild(d); d.showModal();
+    d.querySelector('[data-c]').onclick = async () => { try { if (!(pv.copyImage && await pv.copyImage(cv.toDataURL('image/png')))) { const b = await (await fetch(cv.toDataURL('image/png'))).blob(); await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); } toast('✓ انسخت: الصقها في ديسكورد أو واتساب (Ctrl+V)'); } catch (e) { toast('ما قدرت أنسخها: ' + e.message); } };
     d.querySelector('[data-x]').onclick = () => d.close();
     d.querySelector('[data-f]').onclick = () => pv.showCard(file);
     d.querySelector('[data-p]').onclick = () => { d.close(); window.Shots?.sendToPhone([{ game: 'قائمة المستويات', files: [{ f: file }] }], 'قائمة المستويات'); };
