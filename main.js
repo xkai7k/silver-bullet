@@ -1566,7 +1566,7 @@ function helperExe(name = 'sbwatch') {
   return new Promise((res) => execFile(csc, ['/nologo', '/optimize+', '/target:exe', '/platform:anycpu', `/out:${exe}`, src], { windowsHide: true, timeout: 60000 }, (err, out) => { if (err) log('helper build failed', String(out || err.message).slice(0, 400)); res(err ? null : exe); }));
 }
 const SELF = /^(silver bullet|preview|electron|explorer|searchhost|startmenuexperiencehost|shellexperiencehost|textinputhost|lockapp|applicationframehost)\.exe$/i;
-const NOT_GAME = /^(chrome|msedge|brave|firefox|opera|discord|spotify|telegram|whatsapp|vlc|mpc-hc64|potplayermini64|code|notepad|explorer|taskmgr|obs64|steam|epicgameslauncher|eadesktop|battle\.net|nvidia app|powerpnt|winword|excel)\.exe$/i;
+const NOT_GAME = /^(chrome|msedge|brave|firefox|opera|discord|spotify|telegram|whatsapp|vlc|mpc-hc64|potplayermini64|code|notepad|explorer|taskmgr|obs64|steam|epicgameslauncher|eadesktop|battle\.net|nvidia app|powerpnt|winword|excel|claude|githubdesktop)\.exe$/i;
 function setRest(next, why) {
   if (restState.game === next) return;
   restState.game = next; restState.reason = why;

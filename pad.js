@@ -176,7 +176,7 @@
       </div>
       <div class="pc-sec">
         <h3>شحن أجهزة البلوتوث</h3>
-        <div>${btList.length ? btList.map((d) => `<div class="pc-row">${iconFor(d.name)} ${esc(d.name)} <b>${d.battery}%</b></div>`).join('') : '<p class="hint">ما فيه أجهزة بلوتوث تعطي ويندوز نسبة شحنها حالياً (السماعات غالباً تظهر، وبعض الأيادي والماوسات ما تظهر).</p>'}</div>
+        <div>${btList.length ? btList.map((d) => `<div class="pc-row">${iconFor(d.name)} ${esc(d.name)} <b>${d.wired ? '🔌 على السلك' : d.battery == null ? '—' : d.approx ? `~${d.battery}%` : `${d.battery}%`}</b></div>`).join('') : '<p class="hint">ما فيه أجهزة بلوتوث تعطي ويندوز نسبة شحنها حالياً (السماعات غالباً تظهر، وبعض الأيادي والماوسات ما تظهر).</p>'}</div>
       </div>
       <div class="pc-sec">
         <h3>DS4Windows</h3>
