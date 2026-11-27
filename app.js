@@ -3052,6 +3052,47 @@ const drawPin = (r) => { const el = $('#remotePinState'); drawDevs(r); if (el) e
 pv.remoteInfo?.().then(drawPin).catch(() => {});
 $('#remotePinGo') && ($('#remotePinGo').onclick = async () => { const r = await pv.remotePin?.($('#remotePin').value.trim()); if (r?.error) { toast(r.error); return; } $('#remotePin').value = ''; drawPin(r); toast(r?.pinSet ? '🔒 انحفظ الرمز' : 'انشال الرمز'); });
 $('#remoteNtfy') && ($('#remoteNtfy').onchange = async () => { const r = await pv.remoteNtfy?.($('#remoteNtfy').checked); if (r) drawNtfy(r); });
+// ⚡ direct line to the phone for big files (WebRTC): the relay only carries the hello; the file then goes straight
+// from this PC to the phone. If the networks can't see each other, the phone falls back to the relay by itself.
+const RTC_CFG = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }] };
+const rtcPeers = new Set();
+const iceDone = (pc) => new Promise((r) => { if (pc.iceGatheringState === 'complete') return r(); const t = setTimeout(r, 4000); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); r(); } }); });
+async function rtcAnswer(body) {
+  if (!body?.sdp || rtcPeers.size > 4) return { ok: false };
+  const pc = new RTCPeerConnection(RTC_CFG); rtcPeers.add(pc);
+  const bye = () => { try { pc.close(); } catch {} rtcPeers.delete(pc); };
+  setTimeout(() => { if (pc.connectionState !== 'connected') bye(); }, 30000);
+  pc.onconnectionstatechange = () => { if (/failed|closed|disconnected/.test(pc.connectionState)) bye(); };
+  pc.ondatachannel = (ev) => {
+    const ch = ev.channel; ch.binaryType = 'arraybuffer';
+    ch.onmessage = async (m) => {
+      let q; try { q = JSON.parse(m.data); } catch { return; }
+      if (q.t !== 'get') return;
+      try {
+        const info = await pv.remoteCall('cmd', { type: 'fileInfo', id: q.id, small: !!q.small });
+        if (!info?.ok) { ch.send(JSON.stringify({ t: 'err', msg: info?.msg || '' })); return; }
+        ch.send(JSON.stringify({ t: 'info', size: info.size, name: info.name, mime: info.mime }));
+        pv.log('phone: direct line, sending ' + info.name + ' ' + Math.round(info.size / 1048576) + 'MB');
+        ch.bufferedAmountLowThreshold = 1 << 20;
+        const PIECE = 1 << 20, MSG = 64 * 1024;
+        for (let off = Math.max(0, Math.min(info.size, +q.off || 0)); off < info.size && ch.readyState === 'open'; off += PIECE) {
+          const r = await pv.remoteCall('cmd', { type: 'fileChunk', id: q.id, small: !!q.small, off, len: PIECE });
+          if (!r?.ok) throw new Error('read');
+          const bin = atob(r.d), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+          for (let o = 0; o < u.length; o += MSG) {
+            if (ch.bufferedAmount > 8 << 20) await new Promise((res) => { ch.onbufferedamountlow = () => { ch.onbufferedamountlow = null; res(); }; });
+            ch.send(u.subarray(o, o + MSG));
+          }
+        }
+        ch.send(JSON.stringify({ t: 'end' }));
+      } catch (e) { try { ch.send(JSON.stringify({ t: 'err', msg: e.message })); } catch {} }
+    };
+  };
+  await pc.setRemoteDescription({ type: 'offer', sdp: String(body.sdp) });
+  await pc.setLocalDescription(await pc.createAnswer());
+  await iceDone(pc);
+  return { ok: true, sdp: pc.localDescription.sdp };
+}
 // "from anywhere": the phone talks through a free relay; the app here answers it (same key as the Wi-Fi link)
 let rnet = null;
 function remoteNet(on, key) {
@@ -3072,7 +3113,7 @@ function remoteNet(on, key) {
       else if (m.type === 'CANDIDATE' && m.payload?.sb?.t === 'api') {
         const q = m.payload.sb;
         if (!remoteNet.seen) { remoteNet.seen = true; pv.log('phone remote: first call from anywhere (' + q.kind + ')'); }
-        const r = await pv.remoteCall(q.kind, q.body).catch(() => ({ ok: false }));
+        const r = q.kind === 'rtc' ? await rtcAnswer(q.body).catch((e) => ({ ok: false, msg: e.message })) : await pv.remoteCall(q.kind, q.body).catch(() => ({ ok: false }));
         const txt = JSON.stringify(r), size = 12000, n = Math.max(1, Math.ceil(txt.length / size));
         for (let i = 0; i < n; i++) ws.send(JSON.stringify({ type: 'CANDIDATE', dst: m.src, payload: { type: 'data', candidate: { candidate: '', sdpMid: '0', sdpMLineIndex: 0 }, sb: { t: 'res', id: q.id, i, n, d: txt.slice(i * size, (i + 1) * size) }, connectionId: 'sb' } }));
       }
