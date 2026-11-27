@@ -87,6 +87,8 @@ contextBridge.exposeInMainWorld('api', {
   videosLocal: (skip) => ipcRenderer.invoke('videos:local', skip),
   sharedAdd: (f) => ipcRenderer.invoke('shared:add', f),
   sharedOpen: () => ipcRenderer.invoke('shared:open'),
+  sharedList: () => ipcRenderer.invoke('shared:list'),
+  sharedDel: (f, why) => ipcRenderer.invoke('shared:del', f, why),
   onSteamInstalled: (cb) => ipcRenderer.on('steam:installed', (_e, ids) => cb(ids)),
   dealsSearch: (q) => ipcRenderer.invoke('deals:search', q),
   dealsWish: (g, on) => ipcRenderer.invoke('deals:wish', g, on),

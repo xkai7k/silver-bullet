@@ -3143,6 +3143,19 @@ pv.onTorShare((f) => addToTorLib(f, false, true));
 
 $('#setLang').onchange = () => window.I18n?.set($('#setLang').value);
 
+// ---------- 📁 Shared folder tidies itself: an episode goes once you've watched it (on the PC or the phone page), or after two weeks ----------
+async function tidyShared() {
+  const list = await pv.sharedList?.().catch(() => null); if (!Array.isArray(list)) return;
+  for (const f of list) {
+    if (!f.src || f.up) continue; // only what we sent there, and not while it's still copying
+    const p = window.Series?.progOf?.(f.src);
+    const watched = p?.d && p.t / p.d > 0.9;
+    const old = f.sentAt && Date.now() - f.sentAt > 14 * 864e5;
+    if (watched || old) { const r = await pv.sharedDel(f.file, watched ? 'watched' : '14 days'); if (r?.ok) toast(`🗑 ${f.name} انحذفت من المجلد المشترك (${watched ? 'تابعتها' : 'مر أسبوعين'})`); }
+  }
+}
+setTimeout(tidyShared, 90000); setInterval(tidyShared, 30 * 60 * 1000);
+
 // ---------- A Steam game from "مكتبتي" that is now installed moves up to the installed games ----------
 function promoteSteam(ids) {
   if (!data || !Array.isArray(ids)) return;

@@ -1147,6 +1147,10 @@ ipcMain.handle('videos:local', (_e, skip) => {
 // (download it there and watch without internet). Whatever you drop in from the phone comes down to the PC.
 const sharedDir = () => { const od = process.env.OneDrive || path.join(require('os').homedir(), 'OneDrive'); return path.join(fs.existsSync(od) ? od : app.getPath('documents'), 'Silver Bullet Shared'); };
 const sharingNow = new Set();
+// what we put there and from where (so it can go once you've watched the original, or after two weeks)
+const sharedIndexFile = () => path.join(app.getPath('userData'), 'shared-index.json');
+const sharedIndex = () => { try { return JSON.parse(fs.readFileSync(sharedIndexFile(), 'utf8')); } catch { return {}; } };
+const saveSharedIndex = (x) => { try { fs.writeFileSync(sharedIndexFile(), JSON.stringify(x)); } catch {} };
 async function shareFile(file) {
   try {
     if (!file || !fs.existsSync(file)) return { ok: false, msg: 'الملف مو موجود' };
@@ -1156,6 +1160,7 @@ async function shareFile(file) {
     let free = Infinity; try { const f = fs.statfsSync(dir); free = f.bavail * f.bsize; } catch {}
     if (fs.statSync(file).size > free - 512 * 1048576) return { ok: false, msg: 'المساحة ما تكفي في OneDrive' };
     sharingNow.add(to); log('shared: copying', path.basename(file));
+    const ix = sharedIndex(); ix[to.toLowerCase()] = { src: file, at: Date.now() }; saveSharedIndex(ix);
     fs.promises.copyFile(file, to).then(() => { sharingNow.delete(to); log('shared: ready', path.basename(file)); try { remoteApi?.notifyPhone?.('☁️ جاهزة في OneDrive', path.basename(file)); } catch {} })
       .catch((e) => { sharingNow.delete(to); log('shared copy failed', e.message); });
     return { ok: true };
@@ -1168,9 +1173,11 @@ function sharedList() {
 async function sharedDel(file) {
   const dir = path.resolve(sharedDir()).toLowerCase();
   if (!file || path.resolve(path.dirname(file)).toLowerCase() !== dir) return { ok: false }; // only files inside the shared folder
-  try { await fs.promises.unlink(file); log('shared: deleted', path.basename(file)); return { ok: true }; } catch (e) { return { ok: false, msg: e.message }; }
+  try { await fs.promises.unlink(file); log('shared: deleted', path.basename(file)); const ix = sharedIndex(); delete ix[file.toLowerCase()]; saveSharedIndex(ix); return { ok: true }; } catch (e) { return { ok: false, msg: e.message }; }
 }
 ipcMain.handle('shared:add', (_e, file) => shareFile(file));
+ipcMain.handle('shared:list', () => { const ix = sharedIndex(); return sharedList().map((x) => ({ ...x, src: ix[x.file.toLowerCase()]?.src || '', sentAt: ix[x.file.toLowerCase()]?.at || 0 })); });
+ipcMain.handle('shared:del', (_e, file, why) => { log('shared: auto-remove', path.basename(file || ''), why || ''); return sharedDel(file); });
 ipcMain.handle('shared:open', () => { fs.mkdirSync(sharedDir(), { recursive: true }); return shell.openPath(sharedDir()); });
 
 // ---------- Screenshots & clips per game ----------
