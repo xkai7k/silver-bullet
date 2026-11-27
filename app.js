@@ -2786,6 +2786,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
       else if (k === 'hover') document.querySelectorAll('.tile[data-item]')[Number(v) || 0]?.dispatchEvent(new Event('mouseenter'));
       else if (k === 'drawer') openDrawer();
       else if (k === 'emuget') installEmulators();
+      else if (k === 'rnames') { const g = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store), l = allItems().filter((i) => isGameItem(i) && i.owned); pv.log('phone games: ' + g.map((i) => i.name + ' <' + String(i.target || i.rom || '').slice(0, 60) + '>').join(' | ')); pv.log('phone lib: ' + l.map((i) => i.name + ' <' + String(i.target || '').slice(0, 40) + '>').join(' | ')); }
       else if (k === 'emuprep') pv.emuPrepare().then((c) => pv.log('emulators prepared, cores: ' + [].concat(c || []).join(',')));
       else if (k === 'importall') importAllGames();
       else if (k === 'pedit') openPageEditor(v || 'games');
@@ -3076,10 +3077,15 @@ $('#remoteOn').onchange = async () => { const r = await pv.remoteSet($('#remoteO
 let remoteShows = [], remoteShowsAt = 0;
 async function pushRemote() {
   const pic = (i) => (i.noArt ? '' : (i.image || i.hero || ''));
-  const games = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store).slice(0, 400).map((i) => ({ id: i.id, name: i.name, img: pic(i) }));
+  // the phone shows games only: no launchers, installers, emulators, tools or web links, and nothing whose file is gone
+  const notGame = (i) => (/launcher|setup|installer|benchmark|steamvr|source filmmaker|video player|soundtrack|dedicated server|\bsdk\b|redist|wallpaper engine|\btool\b/i.test(i.name) && !/minecraft/i.test(i.name))
+    || /^(ryujinx|eden|yuzu|citron|sudachi|suyu|torzu|lichii|retroarch|dolphin|pcsx2|duckstation|rpcs3|ppsspp|cemu|xemu|xenia|azahar|melonds|mgba|flycast)$/i.test(i.name.trim())
+    || /setup|install|unins/i.test(String(i.target || '').split(/[\\/]/).pop()) || isWeb(i.target);
+  const gone = new Set(data.missing || []);
+  const games = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store && !notGame(i) && !gone.has(i.id)).slice(0, 400).map((i) => ({ id: i.id, name: i.name, img: pic(i) }));
   const lib = [
     ...(data.torLib || []).filter((t) => t.state !== 'done').map((t) => ({ id: t.id, name: t.title, img: t.image || '', tor: true, state: t.state, pct: t.pct })),
-    ...allItems().filter((i) => isGameItem(i) && i.owned).slice(0, 300).map((i) => ({ id: i.id, name: i.name, img: pic(i), owned: true, sid: /^steam:\/\/(?:install|rungameid)\/(\d+)/.exec(i.target || '')?.[1] || '' })),
+    ...allItems().filter((i) => isGameItem(i) && i.owned && /^steam:/.test(i.target || '') && !notGame(i)).slice(0, 300).map((i) => ({ id: i.id, name: i.name, img: pic(i), owned: true, sid: /^steam:\/\/(?:install|rungameid)\/(\d+)/.exec(i.target || '')?.[1] || '' })),
   ];
   const w = page('watch');
   const watch = (w?.items || []).map((i) => ({ id: i.id, name: i.name, img: pic(i), url: isWeb(i.lastUrl || i.target) ? (i.lastUrl || i.target) : '', note: i.lastNote || '', time: i.lastTime || 0, fav: !!i.fav }));

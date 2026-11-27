@@ -1814,6 +1814,11 @@ function parseVdf(text) {
 }
 const getCI = (o, k) => o && Object.entries(o).find(([kk]) => kk.toLowerCase() === k.toLowerCase())?.[1];
 const readText = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } };
+// Steam's library list: the registry says "c:/program files (x86)/steam", its own file "C:\\Program Files (x86)\\Steam".
+// Same folder: kept once (otherwise every game there was read twice).
+class SteamLibs extends Set {
+  add(p) { const full = path.resolve(String(p)); const k = full.toLowerCase(); if (!this._k) this._k = new Set(); if (this._k.has(k)) return this; this._k.add(k); return super.add(full); }
+}
 
 function steamRoot() {
   return new Promise((resolve) => {
@@ -1834,7 +1839,7 @@ async function steamRemoteInstall(appid, name) {
   appid = String(appid || ''); if (!/^\d+$/.test(appid)) return { ok: false, msg: 'هذي مو لعبة ستيم' };
   if (frontGame() || gamesRunning > 0) return { ok: false, msg: 'فيه لعبة شغّالة الحين، سكّرها أول (من تبويب 💻 الجهاز)' };
   const root = await steamRoot(); if (!root) return { ok: false, msg: 'ستيم مو مثبت على الجهاز' };
-  const libs = new Set([root]);
+  const libs = new SteamLibs([root]);
   const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
   if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p && fs.existsSync(p)) libs.add(p); }
   for (const l of libs) if (fs.existsSync(path.join(l, 'steamapps', `appmanifest_${appid}.acf`))) return { ok: true, msg: `${name} موجودة في ستيم أصلاً (مثبتة أو بالطابور)` };
@@ -1873,9 +1878,14 @@ const steamTracked = new Map(); // appid -> { name, doneAt }
 let steamPaused = false; // Steam closed from the phone to hold its downloads
 let steamDlList = [], steamRootCached = null;
 steamRoot().then((r) => { steamRootCached = r; });
+function dirSize(d, depth = 0) {
+  let n = 0; let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return 0; }
+  for (const e of ents) { const f = path.join(d, e.name); if (e.isDirectory()) { if (depth < 12) n += dirSize(f, depth + 1); } else { try { n += fs.statSync(f).size; } catch {} } }
+  return n;
+}
 function steamDlScan() {
   const root = steamRootCached; if (!root || steamPaused) return;
-  const libs = new Set([root]);
+  const libs = new SteamLibs([root]);
   const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
   if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
   const out = [], installed = [];
@@ -1893,8 +1903,12 @@ function steamDlScan() {
         continue;
       }
       if (!tr && !(flags & (1048576 | 1024))) continue; // only what's downloading right now, or what you asked for from the phone
+      if (out.some((x) => x.id === id)) continue;
+      // Steam writes its own count into the manifest only now and then: what already landed in its download folder is the live number
+      let got = Math.max(done, Number(getCI(a, 'BytesStaged') || 0));
+      if (total) { got = Math.max(got, dirSize(path.join(l, 'steamapps', 'downloading', id))); got = Math.min(got, total); }
       const st = (flags & 1048576) || (flags & 1024) ? 'dl' : total ? 'paused' : 'queued';
-      out.push({ id, name: tr?.name || String(getCI(a, 'name') || id), st, pct: total ? Math.min(99, Math.floor((done / total) * 100)) : 0, done, total });
+      out.push({ id, name: tr?.name || String(getCI(a, 'name') || id), st, pct: total ? Math.min(99, Math.floor((got / total) * 100)) : 0, done: got, total });
     }
   }
   steamDlList = out;
@@ -1916,7 +1930,7 @@ async function steamAct(appid, act) {
     appid = String(appid || ''); if (!/^\d+$/.test(appid)) return { ok: false };
     const wasPaused = steamPaused;
     await steamStop(root);
-    const libs = new Set([root]);
+    const libs = new SteamLibs([root]);
     const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
     if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
     const name = steamTracked.get(appid)?.name || appid;
@@ -1942,7 +1956,7 @@ setInterval(() => { if (steamTracked.size || steamDlList.length || remoteApi) { 
 // where a Steam game is installed (for mods / translations)
 async function steamGameDir(appid) {
   const root = await steamRoot(); if (!root) return null;
-  const libs = new Set([root]);
+  const libs = new SteamLibs([root]);
   const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
   if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
   for (const l of libs) {
@@ -2011,7 +2025,7 @@ ipcMain.handle('import:steam', async () => {
   const root = await steamRoot();
   if (!root) return { error: 'ما لقيت ستيم على الجهاز' };
 
-  const libs = new Set([root]);
+  const libs = new SteamLibs([root]);
   const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
   if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) {
     const p = typeof v === 'object' ? getCI(v, 'path') : null;
@@ -2102,7 +2116,7 @@ ipcMain.handle('import:owned', async () => {
     const root = await steamRoot();
     if (root) {
       const installed = new Set();
-      const libs = new Set([root]);
+      const libs = new SteamLibs([root]);
       const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
       if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
       for (const l of libs) { try { for (const f of fs.readdirSync(path.join(l, 'steamapps'))) { const m = /^appmanifest_(\d+)\.acf$/.exec(f); if (m) installed.add(m[1]); } } catch {} }
