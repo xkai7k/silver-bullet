@@ -1248,6 +1248,29 @@ async function phoneVersion(file) {
   } catch { return file; }
 }
 
+// a lighter copy for downloading from outside: 720p at a phone-sized bitrate, made by the graphics card when it can
+// (a 30 s 1080p clip of ~40 MB comes out around 10 MB, so it arrives about four times sooner)
+const smallMaking = new Map();
+async function phoneSmall(file) {
+  try {
+    const st = fs.statSync(file); if (!VIDEO_EXT.test(file)) return file;
+    const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
+    const key = require('crypto').createHash('md5').update('small' + file + st.mtimeMs).digest('hex').slice(0, 16);
+    const out = path.join(dir, key + '.mp4');
+    if (fs.existsSync(out)) return out;
+    if (!smallMaking.has(key)) smallMaking.set(key, (async () => {
+      const ff = await ffmpegExe(); if (!ff) return false;
+      const base = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', 'scale=-2:min(720\\,ih)', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart'];
+      const tryEnc = (v) => new Promise((r) => execFile(ff, [...base, ...v, out], { windowsHide: true, timeout: 20 * 60000 }, (e) => r(!e && fs.existsSync(out))));
+      const ok = await tryEnc(['-c:v', 'h264_nvenc', '-preset', 'p4', '-b:v', '2800k', '-maxrate', '4M', '-bufsize', '8M']) || await tryEnc(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26']);
+      if (ok) log('phone small copy', path.basename(file), Math.round(st.size / 1048576) + 'MB ->', Math.round(fs.statSync(out).size / 1048576) + 'MB');
+      else { try { fs.unlinkSync(out); } catch {} log('phone small copy failed', path.basename(file)); }
+      return ok;
+    })().finally(() => smallMaking.delete(key)));
+    return (await smallMaking.get(key)) ? out : file;
+  } catch { return file; }
+}
+
 // ---------- 📁 Shared with the phone: a folder in OneDrive ----------
 // An episode you send there is uploaded by OneDrive by itself; on the phone the OneDrive app has it
 // (download it there and watch without internet). Whatever you drop in from the phone comes down to the PC.
@@ -2557,7 +2580,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, phoneVersion, clipMeta, videoFrame, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, phoneVersion, phoneSmall, clipMeta, videoFrame, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;
