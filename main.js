@@ -1187,6 +1187,7 @@ async function audioInfo(ff, file) {
 // otherwise every track mixed together (so friends' voices on Discord and the mic aren't lost)
 async function soundArgs(ff, file, extra) {
   const names = await audioInfo(ff, file);
+  log('clip sound tracks', path.basename(file), names.length + ':', names.join(' | ') || '-');
   if (names.length <= 1) return { map: ['-map', '0:a:0?'], af: extra };
   const mixI = names.findIndex((n) => /\b(mix|mixed|master|all)\b/i.test(n));
   if (mixI >= 0) return { map: ['-map', '0:a:' + mixI], af: extra };
@@ -1301,7 +1302,7 @@ async function phoneClip(file, small) {
   try {
     const st = fs.statSync(file); if (!VIDEO_EXT.test(file) || st.size > 4 * 1024 ** 3) return file;
     const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
-    const key = require('crypto').createHash('md5').update('steady4' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
+    const key = require('crypto').createHash('md5').update('steady5' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
     const out = path.join(dir, key + '.mp4');
     if (fs.existsSync(out)) return out;
     if (!steadyMaking.has(key)) steadyMaking.set(key, (async () => {
