@@ -2786,7 +2786,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
       else if (k === 'hover') document.querySelectorAll('.tile[data-item]')[Number(v) || 0]?.dispatchEvent(new Event('mouseenter'));
       else if (k === 'drawer') openDrawer();
       else if (k === 'emuget') installEmulators();
-      else if (k === 'rnames') { const g = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store), l = allItems().filter((i) => isGameItem(i) && i.owned); pv.log('phone games: ' + g.map((i) => i.name + ' <' + String(i.target || i.rom || '').slice(0, 60) + '>').join(' | ')); pv.log('phone lib: ' + l.map((i) => i.name + ' <' + String(i.target || '').slice(0, 40) + '>').join(' | ')); }
+      else if (k === 'rnames') { const g = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store), l = allItems().filter((i) => isGameItem(i) && i.owned); pv.log('phone games: ' + g.map((i) => i.name + ' <' + String(i.target || i.rom || '').slice(0, 60) + '>').join(' | ')); pv.log('phone lib: ' + l.map((i) => i.name + ' <' + String(i.target || '').slice(0, 40) + '>').join(' | ')); pv.videosLocal?.([]).then((v) => pv.log('phone videos: ' + (v || []).map((x) => x.name + ' <' + x.dir.slice(0, 70) + '> ' + x.episodes.length).join(' | '))); }
       else if (k === 'emuprep') pv.emuPrepare().then((c) => pv.log('emulators prepared, cores: ' + [].concat(c || []).join(',')));
       else if (k === 'importall') importAllGames();
       else if (k === 'pedit') openPageEditor(v || 'games');

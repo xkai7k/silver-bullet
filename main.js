@@ -1108,12 +1108,18 @@ ipcMain.handle('series:scan', (_e, folders) => {
   return shows.sort((a, b) => natural(a.name, b.name));
 });
 
-// Videos you downloaded, without picking a folder: Downloads, Videos and the app's own download folder.
+// Videos you downloaded, without picking a folder: Downloads and the app's own torrent folder.
 // A folder of videos there is a show; a single video is a movie / clip. Newest first.
+// a folder that holds programs (.exe / .dll / installers) within a few levels is software, not a show
+function isProgramDir(d, depth = 0) {
+  let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return false; }
+  if (ents.some((e) => e.isFile() && /\.(exe|dll|msi|apk|pak)$/i.test(e.name))) return true;
+  return depth < 3 && ents.some((e) => e.isDirectory() && isProgramDir(path.join(d, e.name), depth + 1));
+}
 ipcMain.handle('videos:local', (_e, skip) => {
   const home = require('os').homedir();
   const torOut = path.join(app.getPath('downloads'), 'Silver Bullet Torrents');
-  const roots = [app.getPath('downloads'), app.getPath('videos'), path.join(home, 'OneDrive', 'Videos'), torOut].filter((d, i, a) => d && fs.existsSync(d) && a.indexOf(d) === i);
+  const roots = [app.getPath('downloads'), torOut] // only what you downloaded: recordings from NVIDIA / Kairos / Medal (in Videos) are left out.filter((d, i, a) => d && fs.existsSync(d) && a.indexOf(d) === i);
   const skipSet = new Set([...(skip || []), torOut].map((d) => path.resolve(d).toLowerCase())); // the torrent folder is read as its own shelf, not one big "show"
   const out = [];
   for (const root of roots) {
@@ -1123,7 +1129,8 @@ ipcMain.handle('videos:local', (_e, skip) => {
       if (skipSet.has(path.resolve(d).toLowerCase())) continue;
       try {
         if (e.isDirectory()) {
-          const eps = videosIn(d).filter((v) => v.size > 1 << 20).sort((a, b) => natural(a.file, b.file));
+          if (isProgramDir(d)) continue; // a game or an app (its intro videos and cutscenes aren't yours to watch)
+          const eps = videosIn(d).filter((v) => v.size > 1 << 20 && !/^(intro|logo|splash|credits|trailer|attract|opening|movie\d*|cutscene)/i.test(v.name)).sort((a, b) => natural(a.file, b.file));
           if (eps.length) out.push({ name: e.name, dir: d, poster: posterIn(d), episodes: eps, at: Math.max(...eps.map((v) => { try { return fs.statSync(v.file).mtimeMs; } catch { return 0; } })) });
         } else if (e.isFile() && VIDEO_EXT.test(e.name) && !/sample/i.test(e.name)) {
           const st = fs.statSync(d); if (st.size < 1 << 20) continue;
