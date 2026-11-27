@@ -121,6 +121,12 @@ const PLATFORMS = {
   psp: { label: 'PSP', exts: 'iso,cso,pbp,chd', args: '{rom}', thumbs: 'Sony - PlayStation Portable' },
   gc: { label: 'جيم كيوب / وي', exts: 'iso,rvz,gcm,wbfs,ciso,gcz', args: '-b -e {rom}', thumbs: 'Nintendo - GameCube' },
   switch: { label: 'سويتش', exts: 'nsp,xci', args: '{rom}', thumbs: '' },
+  ps4: { label: 'بلايستيشن 4', exts: 'eboot.bin', args: '{rom}', thumbs: 'Sony - PlayStation 4' },
+  '3ds': { label: 'نينتندو 3DS', exts: '3ds,cci,cxi', args: '{rom}', thumbs: 'Nintendo - Nintendo 3DS' },
+  wiiu: { label: 'Wii U', exts: 'wua,wud,wux,rpx', args: '-f -g {rom}', thumbs: 'Nintendo - Wii U' },
+  dc: { label: 'دريم كاست', exts: 'gdi,cdi,chd', args: '{rom}', thumbs: 'Sega - Dreamcast' },
+  xbox: { label: 'إكس بوكس', exts: 'iso,xiso', args: '-full-screen -dvd_path {rom}', thumbs: 'Microsoft - Xbox' },
+  x360: { label: 'إكس بوكس 360', exts: 'iso,xex,zar', args: '{rom} --fullscreen=true', thumbs: 'Microsoft - Xbox 360' },
   n64: { label: 'نينتندو 64', exts: 'z64,n64,v64', args: '{rom}', thumbs: 'Nintendo - Nintendo 64' },
   snes: { label: 'سوبر نينتندو', exts: 'sfc,smc', args: '{rom}', thumbs: 'Nintendo - Super Nintendo Entertainment System' },
   gba: { label: 'جيم بوي أدفانس', exts: 'gba', args: '{rom}', thumbs: 'Nintendo - Game Boy Advance' },
@@ -793,8 +799,9 @@ function torLibProgress(items) {
   for (const t of data.torLib || []) {
     if (t.state !== 'downloading') continue;
     const x = items.find((i) => i.name === t.name); if (!x) continue;
+    t.seenAt = Date.now();
     const pct = x.total ? Math.floor((x.done / x.total) * 100) : 0;
-    if (x.status === 'complete') { t.state = 'done'; t.pct = 100; changed = true; }
+    if (x.status === 'complete') { t.state = 'done'; t.pct = 100; t.doneAt = Date.now(); changed = true; }
     else if (pct !== t.pct) { t.pct = pct; changed = true; }
   }
   if (changed) { save(); if (currentPageId === 'games' && gamesTab === 'tor') renderPage(); }
@@ -2779,6 +2786,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
       else if (k === 'hover') document.querySelectorAll('.tile[data-item]')[Number(v) || 0]?.dispatchEvent(new Event('mouseenter'));
       else if (k === 'drawer') openDrawer();
       else if (k === 'emuget') installEmulators();
+      else if (k === 'emuprep') pv.emuPrepare().then((c) => pv.log('emulators prepared, cores: ' + [].concat(c || []).join(',')));
       else if (k === 'importall') importAllGames();
       else if (k === 'pedit') openPageEditor(v || 'games');
       else if (k === 'romsync') syncRomGames();
@@ -3077,7 +3085,8 @@ async function pushRemote() {
   const watch = (w?.items || []).map((i) => ({ id: i.id, name: i.name, img: pic(i), url: isWeb(i.lastUrl || i.target) ? (i.lastUrl || i.target) : '', note: i.lastNote || '', time: i.lastTime || 0, fav: !!i.fav }));
   if (window.Series && Date.now() - remoteShowsAt > 10 * 60000 && w?.folders?.length && !window.SB_PAUSED?.()) { remoteShowsAt = Date.now(); try { remoteShows = await Series.scanAll(); } catch { remoteShows = []; } }
   const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
-  const torrents = (data.torLib || []).filter((t) => t.state && t.state !== 'saved').slice(0, 20).map((t) => ({ title: t.title, state: t.state, pct: t.pct }));
+  // only real downloads: running now (the downloader saw it in the last 2 minutes), or finished/failed in the last day, and not cleared
+  const torrents = (data.torLib || []).filter((t) => !t.cleared && (t.state === 'downloading' ? Date.now() - (t.seenAt || 0) < 120000 : (t.state === 'done' || t.state === 'dead') && Date.now() - (t.doneAt || t.seenAt || 0) < 864e5)).slice(0, 20).map((t) => ({ title: t.title, state: t.state, pct: t.pct }));
   const shots = window.Shots?.recent?.(80) || [];
   pv.remoteState({ games, lib, watch, shows, shots, torrents, name: data.user?.name || '', lang: data.settings.lang || 'ar' });
 }
@@ -3087,6 +3096,15 @@ pv.onRemote((c) => {
   if (c.type === 'webProg') { const f = findItem(c.id); if (f && isWeb(c.url)) { const ep = c.url !== f.item.lastUrl; f.item.lastUrl = c.url; if (c.t != null) f.item.lastTime = c.t; else if (ep) delete f.item.lastTime; if (ep) f.item.lastNote = '📱 ' + (c.t != null ? 'من الجوال' : 'حلقة من الجوال'); f.item.lastOpened = Date.now(); save(); clearTimeout(window._wpT); window._wpT = setTimeout(() => { pushRemote(); if (page()?.id === f.page.id) renderPage(); }, 1500); pv.log(`phone: progress ${f.item.name} ${c.t ?? ''}`); } return; }
   if (c.type === 'fav') { const f = findItem(c.id); if (f) { f.item.fav = !!c.on; save(); if (page()?.id === f.page.id) renderPage(); pushRemote(); } return; }
   if (c.type === 'launch') { const f = findItem(c.id); pv.log('phone: open ' + (f ? f.item.name : 'missing ' + c.id)); if (f) { launchItem(f.item); toast(`📱 ${f.item.name} من الجوال`); } }
+  else if (c.type === 'dlClear') { // "🧹 نظّف الكل" on the phone: finished, failed and stuck ones leave the list (the games stay)
+    let n = 0;
+    for (const t of data.torLib || []) {
+      if (t.state === 'done' || t.state === 'dead') { if (!t.cleared) { t.cleared = true; n++; } }
+      else if (t.state === 'downloading' && Date.now() - (t.seenAt || 0) > 120000) { t.state = 'saved'; t.pct = 0; n++; }
+    }
+    save(); pushRemote(); if (currentPageId === 'games' && gamesTab === 'tor') renderPage();
+    pv.log('phone: downloads list cleared (' + n + ')');
+  }
   else if (c.type === 'torDl') { const t = (data.torLib || []).find((x) => x.id === c.id); if (t && t.state === 'saved') pv.torAdd(t.file, { quiet: true }).then((r) => { if (r.ok) { t.state = 'downloading'; t.pct = 0; save(); toast(`📱 ⬇ بدأ تحميل ${t.title}`); if (currentPageId === 'games' && gamesTab === 'tor') renderPage(); } else toast('ما قدرت: ' + r.error); }); }
   else if (c.type === 'showPlay') { window.Series?.playFile(c.dir, c.file); toast('📱 من الجوال'); }
   else if (c.type === 'epProg') window.Series?.progress(c.dir, c.file, c.t, c.d);

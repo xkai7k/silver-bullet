@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROM_EXT = /\.(nes|fds|unf|sfc|smc|gb|gbc|gba|n64|z64|v64|nds|3ds|cci|cxi|md|gen|smd|sms|gg|32x|pce|a26|cso|pbp|rvz|wbfs|gcz|wia|gcm|ciso|wua|wud|wux|gdi|cdi|xex|iso|cue|chd|m3u|nsp|xci|nsz|xcz)$/i;
+const ROM_EXT = /\.(sg|ngp|ngc|ws|wsc|a78|lnx|j64|jag|sgx|nes|fds|unf|sfc|smc|gb|gbc|gba|n64|z64|v64|nds|3ds|cci|cxi|md|gen|smd|sms|gg|32x|pce|a26|cso|pbp|rvz|wbfs|gcz|wia|gcm|ciso|wua|wud|wux|gdi|cdi|xex|iso|cue|chd|m3u|nsp|xci|nsz|xcz)$/i;
 const ARCHIVE = /\.(zip|7z|rar)$/i;
 const BUSY = /\.(crdownload|part|tmp|download|opdownload)$/i;
 
@@ -22,6 +22,17 @@ const CONSOLES = {
   '32x': { label: 'سيغا 32X', dir: '32X', thumbs: 'Sega - 32X', core: 'picodrive' },
   pce: { label: 'PC Engine', dir: 'PC Engine', thumbs: 'NEC - PC Engine - TurboGrafx 16', core: 'mednafen_pce_fast' },
   a2600: { label: 'أتاري 2600', dir: 'Atari 2600', thumbs: 'Atari - 2600', core: 'stella2014' },
+  a7800: { label: 'أتاري 7800', dir: 'Atari 7800', thumbs: 'Atari - 7800', core: 'prosystem' },
+  lynx: { label: 'أتاري لينكس', dir: 'Atari Lynx', thumbs: 'Atari - Lynx', core: 'handy' },
+  jaguar: { label: 'أتاري جاغوار', dir: 'Atari Jaguar', thumbs: 'Atari - Jaguar', core: 'virtualjaguar' },
+  sg1000: { label: 'سيغا SG-1000', dir: 'SG-1000', thumbs: 'Sega - SG-1000', core: 'genesis_plus_gx' },
+  segacd: { label: 'سيغا CD', dir: 'Sega CD', thumbs: 'Sega - Mega-CD - Sega CD', core: 'genesis_plus_gx' },
+  saturn: { label: 'سيغا ساتورن', dir: 'Saturn', thumbs: 'Sega - Saturn', core: 'yabasanshiro', coreAlt: 'mednafen_saturn' },
+  sgx: { label: 'PC Engine SuperGrafx', dir: 'SuperGrafx', thumbs: 'NEC - PC Engine SuperGrafx', core: 'mednafen_supergrafx' },
+  ngp: { label: 'نيو جيو بوكيت', dir: 'Neo Geo Pocket', thumbs: 'SNK - Neo Geo Pocket', core: 'mednafen_ngp' },
+  ngc: { label: 'نيو جيو بوكيت كلر', dir: 'Neo Geo Pocket Color', thumbs: 'SNK - Neo Geo Pocket Color', core: 'mednafen_ngp' },
+  ws: { label: 'وندر سوان', dir: 'WonderSwan', thumbs: 'Bandai - WonderSwan', core: 'mednafen_wswan' },
+  wsc: { label: 'وندر سوان كلر', dir: 'WonderSwan Color', thumbs: 'Bandai - WonderSwan Color', core: 'mednafen_wswan' },
   ps1: { label: 'بلايستيشن 1', dir: 'PS1', thumbs: 'Sony - PlayStation', emu: 'duckstation', args: ['-batch', '-fullscreen', '--', '{rom}'], bios: 'ps1' },
   ps2: { label: 'بلايستيشن 2', dir: 'PS2', thumbs: 'Sony - PlayStation 2', emu: 'pcsx2', args: ['-batch', '-nogui', '-fullscreen', '--', '{rom}'], bios: 'ps2' },
   psp: { label: 'PSP', dir: 'PSP', thumbs: 'Sony - PlayStation Portable', emu: 'ppsspp', args: ['--fullscreen', '{rom}'] },
@@ -36,7 +47,7 @@ const CONSOLES = {
 const BY_EXT = {
   nes: 'nes', fds: 'nes', unf: 'nes', sfc: 'snes', smc: 'snes', gb: 'gb', gbc: 'gbc', gba: 'gba', n64: 'n64', z64: 'n64', v64: 'n64',
   nds: 'nds', '3ds': '3ds', cci: '3ds', cxi: '3ds', md: 'genesis', gen: 'genesis', smd: 'genesis', sms: 'sms', gg: 'gg', '32x': '32x',
-  pce: 'pce', a26: 'a2600', cso: 'psp', rvz: 'gc', wbfs: 'wii', gcz: 'gc', wia: 'gc', gcm: 'gc', ciso: 'gc',
+  pce: 'pce', a26: 'a2600', a78: 'a7800', lnx: 'lynx', j64: 'jaguar', jag: 'jaguar', sg: 'sg1000', sgx: 'sgx', ngp: 'ngp', ngc: 'ngc', ws: 'ws', wsc: 'wsc', cso: 'psp', rvz: 'gc', wbfs: 'wii', gcz: 'gc', wia: 'gc', gcm: 'gc', ciso: 'gc',
   wua: 'wiiu', wud: 'wiiu', wux: 'wiiu', gdi: 'dc', cdi: 'dc', xex: 'x360', nsp: 'switch', xci: 'switch', nsz: 'switch', xcz: 'switch',
 };
 
@@ -62,6 +73,10 @@ function sniffDisc(file) {
     // CD/DVD images: look through the start of the disc for the console's own marks
     const chunk = readAt(fd, 0, Math.min(size, 12 << 20)).toString('latin1');
     if (chunk.includes('SEGA SEGAKATANA')) return 'dc';
+    const head2 = chunk.slice(0, 0x400);
+    if (head2.includes('SEGA SEGASATURN')) return 'saturn';
+    if (head2.includes('SEGADISCSYSTEM')) return 'segacd';
+    if (size < 10 << 20 && /^SEGA/.test(chunk.slice(0x100, 0x104))) return 'genesis'; // a Mega Drive cartridge saved as .bin
     if (chunk.includes('PSP GAME') || chunk.includes('PSP_GAME')) return 'psp';
     if (/BOOT2\s*=\s*cdrom0:/i.test(chunk)) return 'ps2';
     if (/BOOT\s*=\s*cdrom:/i.test(chunk) || chunk.includes('Sony Computer Entertainment')) return 'ps1';

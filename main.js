@@ -411,15 +411,15 @@ const EMU_CATALOG = [
   { id: 'pcsx2', name: 'PCSX2', desc: 'محاكي بلايستيشن 2 — سوني', platform: 'ps2', exe: /^pcsx2-qt\.exe$/i, gh: 'PCSX2/pcsx2', asset: /windows-x64-Qt\.7z$/i,
     existing: ['C:\\Program Files\\PCSX2\\pcsx2-qt.exe'] },
   { id: 'rpcs3', name: 'RPCS3', desc: 'محاكي بلايستيشن 3 — سوني', platform: 'ps3', exe: /^rpcs3\.exe$/i, gh: 'RPCS3/rpcs3-binaries-win', asset: /_win64.*\.7z$/i, existing: ['C:\\RPCS3\\rpcs3.exe'] },
-  { id: 'shadps4', name: 'shadPS4', desc: 'محاكي بلايستيشن 4 — سوني (تجريبي)', exe: /^shadps4.*\.exe$/i, gh: 'shadps4-emu/shadPS4', asset: /win(64|dows).*\.zip$/i, prefer: /qt/i, localOnly: true }, // too early to run most games: used only if you installed it yourself
+  { id: 'shadps4', name: 'shadPS4', desc: 'محاكي بلايستيشن 4 — سوني (يشغّل جزء من الألعاب)', platform: 'ps4', exe: /^shadps4.*\.exe$/i, gh: 'shadps4-emu/shadPS4', asset: /win64.*\.zip$/i },
   { id: 'ppsspp', name: 'PPSSPP', desc: 'محاكي PSP — سوني (الجهاز المحمول)', platform: 'psp', exe: /^ppssppwindows64\.exe$/i,
     url: async () => { const h = await (await net.fetch('https://www.ppsspp.org/download/')).text(); const m = /\/files\/[\d_]+\/ppsspp_win\.zip/i.exec(h); return m && 'https://www.ppsspp.org' + m[0]; },
     file: 'ppsspp_win.zip', existing: ['C:\\Program Files\\PPSSPP\\PPSSPPWindows64.exe'] },
-  { id: 'vita3k', name: 'Vita3K', desc: 'محاكي بلايستيشن فيتا — سوني (تجريبي)', exe: /^vita3k\.exe$/i, gh: 'Vita3K/Vita3K', asset: /^windows-latest\.zip$/i, tag: 'continuous', localOnly: true }, // same: experimental
+  { id: 'vita3k', name: 'Vita3K', desc: 'محاكي بلايستيشن فيتا — سوني (تجريبي)', exe: /^vita3k\.exe$/i, gh: 'Vita3K/Vita3K', asset: /^windows-latest\.zip$/i, tag: 'continuous' },
   { id: 'dolphin', name: 'Dolphin', desc: 'محاكي جيم كيوب و Wii — نينتندو', platform: 'gc', exe: /^dolphin\.exe$/i,
     url: async () => { let h = ''; try { const r = await net.fetch('https://dolphin-emu.org/download/', { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36' } }); h = await r.text(); } catch {} const m = /(?:https:)?\/\/dl\.dolphin-emu\.org\/(?:releases|builds)\/[\w./-]+?-x64\.7z/i.exec(h); return m ? (m[0].startsWith('//') ? 'https:' + m[0] : m[0]) : 'https://dl.dolphin-emu.org/releases/2609b/dolphin-2609b-x64.7z'; },
     file: 'dolphin.7z', existing: ['C:\\Program Files\\Dolphin\\Dolphin.exe', 'C:\\Program Files\\Dolphin-x64\\Dolphin.exe'] },
-  { id: 'cemu', name: 'Cemu', desc: 'محاكي Wii U — نينتندو', exe: /^cemu\.exe$/i, gh: 'cemu-project/Cemu', asset: /windows-x64\.zip$/i },
+  { id: 'cemu', name: 'Cemu', desc: 'محاكي Wii U — نينتندو', platform: 'wiiu', exe: /^cemu\.exe$/i, gh: 'cemu-project/Cemu', asset: /windows-x64\.zip$/i },
   { id: 'gopher64', name: 'gopher64', desc: 'محاكي نينتندو 64', platform: 'n64', exe: /^gopher64.*\.exe$/i, gh: 'gopher64/gopher64', asset: /windows.*(x86_64|x64).*\.(exe|zip)$/i },
   { id: 'snes9x', name: 'Snes9x', desc: 'محاكي سوبر نينتندو (SNES)', platform: 'snes', exe: /^snes9x-x64\.exe$/i, gh: 'snes9xgit/snes9x', asset: /win32-x64\.zip$/i },
   { id: 'mesen', name: 'Mesen', desc: 'محاكي نينتندو (NES) وسوبر نينتندو وجيم بوي', exe: /^mesen\.exe$/i, gh: 'SourMesen/Mesen2', asset: /windows.*\.zip$/i, localOnly: true }, // needs .NET installed: fails on many PCs, ares covers the same
@@ -427,9 +427,9 @@ const EMU_CATALOG = [
   { id: 'stella', name: 'Stella', desc: 'محاكي أتاري 2600', exe: /^stella\.exe$/i, gh: 'stella-emu/stella', asset: /windows\.zip$/i },
   { id: 'mgba', name: 'mGBA', desc: 'محاكي جيم بوي أدفانس وجيم بوي — نينتندو', platform: 'gba', exe: /^mgba\.exe$/i, gh: 'mgba-emu/mgba', asset: /win64\.7z$/i },
   { id: 'melonds', name: 'melonDS', desc: 'محاكي نينتندو DS', platform: 'nds', exe: /^melonds\.exe$/i, gh: 'melonDS-emu/melonDS', asset: /windows.*x86_64.*\.zip$|win.*x64.*\.zip$/i },
-  { id: 'azahar', name: 'Azahar', desc: 'محاكي نينتندو 3DS', exe: /^azahar\.exe$/i, gh: 'azahar-emu/azahar', asset: /^azahar-windows-msvc-[\d.]+\.zip$/i },
-  { id: 'flycast', name: 'Flycast', desc: 'محاكي سيغا دريم كاست', exe: /^flycast\.exe$/i, gh: 'flyinghead/flycast', asset: /win64.*\.zip$/i },
-  { id: 'xemu', name: 'xemu', desc: 'محاكي إكس بوكس الأول — مايكروسوفت', exe: /^xemu\.exe$/i, gh: 'xemu-project/xemu', asset: /^xemu-win-x86_64-release\.zip$/i },
+  { id: 'azahar', name: 'Azahar', desc: 'محاكي نينتندو 3DS', platform: '3ds', exe: /^azahar\.exe$/i, gh: 'azahar-emu/azahar', asset: /^azahar-windows-msvc-[\d.]+\.zip$/i },
+  { id: 'flycast', name: 'Flycast', desc: 'محاكي سيغا دريم كاست', platform: 'dc', exe: /^flycast\.exe$/i, gh: 'flyinghead/flycast', asset: /win64.*\.zip$/i },
+  { id: 'xemu', name: 'xemu', desc: 'محاكي إكس بوكس الأول — مايكروسوفت', platform: 'xbox', exe: /^xemu\.exe$/i, gh: 'xemu-project/xemu', asset: /^xemu-win-x86_64-release\.zip$/i },
   { id: 'ryujinx', name: 'Ryujinx', desc: 'محاكي نينتندو سويتش (يحتاج مفاتيح من جهازك)', platform: 'switch', exe: /^ryujinx\.exe$/i, file: 'ryujinx.zip',
     url: async () => { // Ryubing: the maintained Ryujinx; its own site first, GitHub copies after
       const pick = (assets) => (assets || []).find((a) => /win_x64\.zip$/i.test(a.name) && !/arm|sdl2-headless|headless/i.test(a.name));
@@ -441,8 +441,22 @@ const EMU_CATALOG = [
       return null;
     } },
   // Switch emulators people install themselves: never downloaded by us, but used when they're on the PC
-  ...['Lichii', 'Eden', 'Citron', 'Sudachi', 'Suyu', 'Torzu', 'Yuzu'].map((n) => ({ id: n.toLowerCase(), name: n, desc: 'محاكي نينتندو سويتش (لقيته على جهازك)', platform: 'switch', exe: new RegExp(`^${n}\\.exe$`, 'i'), localOnly: true })),
-  { id: 'xenia', name: 'Xenia Canary', desc: 'محاكي إكس بوكس 360 — مايكروسوفت', exe: /^xenia_canary\.exe$/i, gh: 'xenia-canary/xenia-canary-releases', asset: /^xenia_canary(?!.*linux).*\.zip$/i },
+  { id: 'eden', name: 'Eden', desc: 'محاكي نينتندو سويتش (الأكثر تطوراً، يحتاج مفاتيح من جهازك)', platform: 'switch', exe: /^eden\.exe$/i, file: 'eden.zip',
+    url: async () => { // its own code server (Forgejo); the stable Windows x64 build
+      try {
+        const j = await (await net.fetch('https://git.eden-emu.dev/api/v1/repos/eden-emu/eden/releases?limit=10', { headers: { 'User-Agent': 'SilverBullet/1.0', Accept: 'application/json' } })).json();
+        for (const r of Array.isArray(j) ? j : []) {
+          if (r.prerelease || r.draft) continue;
+          const win = (r.assets || []).filter((a) => /windows/i.test(a.name) && /\.(zip|7z)$/i.test(a.name) && !/arm|aarch|pdb|debug|symbols/i.test(a.name));
+          const a = win.find((x) => /amd64|x64|x86_64/i.test(x.name) && /msvc/i.test(x.name) && !/pgo|clang/i.test(x.name)) || win.find((x) => /amd64|x64|x86_64/i.test(x.name)) || win[0];
+          if (a) return a.browser_download_url;
+          log('eden assets', r.tag_name, (r.assets || []).map((x) => x.name).join(', '));
+        }
+      } catch (e) { log('eden site', e.message); }
+      return null;
+    } },
+  ...['Lichii', 'Citron', 'Sudachi', 'Suyu', 'Torzu', 'Yuzu'].map((n) => ({ id: n.toLowerCase(), name: n, desc: 'محاكي نينتندو سويتش (لقيته على جهازك)', platform: 'switch', exe: new RegExp(`^${n}\\.exe$`, 'i'), localOnly: true })),
+  { id: 'xenia', name: 'Xenia Canary', desc: 'محاكي إكس بوكس 360 — مايكروسوفت', platform: 'x360', exe: /^xenia_canary\.exe$/i, gh: 'xenia-canary/xenia-canary-releases', asset: /^xenia_canary(?!.*linux).*\.zip$/i },
 ];
 const emuIndexFile = () => path.join(app.getPath('userData'), 'emulators.json');
 // ---------- Emulators you installed yourself, anywhere usual on the PC ----------
@@ -598,6 +612,7 @@ const SAVE_SPOTS = () => {
   return [
     ['Switch (Ryujinx)', path.join(ad, 'Ryujinx', 'bis', 'user', 'save')],
     ['Switch (Lichii)', path.join(ad, 'lichii', 'nand', 'user', 'save')],
+    ['Switch (Eden)', path.join(ad, 'eden', 'nand', 'user', 'save')],
     ['PS1 (DuckStation)', path.join(E, 'DuckStation', 'memcards')],
     ['PS2 (PCSX2)', path.join(home, 'Documents', 'PCSX2', 'memcards')],
     ['PSP (PPSSPP)', path.join(E, 'PPSSPP', 'memstick', 'PSP', 'SAVEDATA')],
@@ -1341,6 +1356,7 @@ const EMU_EXES = [
   [/^pcsx2.*\.exe$/i, 'ps2'], [/^duckstation.*\.exe$/i, 'ps1'], [/^ppsspp.*\.exe$/i, 'psp'], [/^dolphin\.exe$/i, 'gc'],
   [/^rpcs3\.exe$/i, 'ps3'], [/^(ryujinx|citron|suyu|sudachi|eden)\.exe$/i, 'switch'], [/^project64\.exe$/i, 'n64'], [/^simple64.*\.exe$/i, 'n64'],
   [/^snes9x.*\.exe$/i, 'snes'], [/^mgba\.exe$/i, 'gba'], [/^melonds\.exe$/i, 'nds'], [/^retroarch\.exe$/i, 'retroarch'],
+  [/^shadps4.*\.exe$/i, 'ps4'], [/^(azahar|citra|lime3ds)\.exe$/i, '3ds'], [/^cemu\.exe$/i, 'wiiu'], [/^flycast\.exe$/i, 'dc'], [/^xemu\.exe$/i, 'xbox'], [/^xenia_canary\.exe$/i, 'x360'],
 ];
 const ROM_EXT = { cue: 'ps1', pbp: 'ps1', cso: 'psp', nsp: 'switch', xci: 'switch', z64: 'n64', n64: 'n64', v64: 'n64', sfc: 'snes', smc: 'snes', gba: 'gba', nds: 'nds', rvz: 'gc', wbfs: 'gc', gcm: 'gc', iso: '?', chd: '?' };
 const NAME_HINT = [[/ps ?2|playstation ?2|pcsx2/i, 'ps2'], [/ps ?3|playstation ?3|rpcs3/i, 'ps3'], [/psp|portable/i, 'psp'], [/ps ?1|psx|playstation ?1|duckstation|playstation(?! ?[2-5])/i, 'ps1'], [/psp/i, 'psp'], [/ps ?3|rpcs3/i, 'ps3'], [/gamecube|wii|dolphin|\bgc\b/i, 'gc'], [/switch|nsp/i, 'switch'], [/n64|nintendo ?64/i, 'n64'], [/snes|super nintendo/i, 'snes'], [/gba|game ?boy/i, 'gba'], [/nds|\bds\b/i, 'nds']];
@@ -1871,7 +1887,7 @@ function steamDlScan() {
         if (tr && Date.now() - tr.doneAt < 30 * 60e3) out.push({ id, name: tr.name, st: 'done', pct: 100, done: total, total });
         continue;
       }
-      if (!tr && !(total > 0 && done < total)) continue; // only real downloads, not every game that wants an update
+      if (!tr && !(flags & (1048576 | 1024))) continue; // only what's downloading right now, or what you asked for from the phone
       const st = (flags & 1048576) || (flags & 1024) ? 'dl' : total ? 'paused' : 'queued';
       out.push({ id, name: tr?.name || String(getCI(a, 'name') || id), st, pct: total ? Math.min(99, Math.floor((done / total) * 100)) : 0, done, total });
     }
@@ -2197,7 +2213,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;
