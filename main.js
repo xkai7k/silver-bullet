@@ -2122,6 +2122,8 @@ app.whenReady().then(() => {
   try {
     tor = require('./torrent').setupTorrents({ ipcMain, app, net, log, download, run, EMU_ROOT, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m), getWin: () => mainWin, importGame: (f, mv) => roms?.importFile(f, mv) });
   } catch (e) { log('torrent setup failed', e.message); }
+  try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
+  ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
   try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();

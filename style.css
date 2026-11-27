@@ -2177,3 +2177,20 @@ dialog { --muted: color-mix(in srgb, var(--panel-text) 74%, transparent); }
 #cleanCard.show { opacity: 1; transform: none; }
 #cleanCard small { opacity: .75; line-height: 1.5; }
 #cleanCard .cc-row { display: flex; gap: 8px; margin-top: 4px; }
+
+/* 📊 the week / 🎁 deals */
+.st-h { display: flex; align-items: center; gap: 10px; margin: 18px 0 8px; font-size: 17px; }
+.st-h small { font-weight: 400; opacity: .75; font-size: 13px; }
+.st-h .btn.sm { margin-inline-start: auto; }
+.dl-free { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.dl-g { display: flex; flex-direction: column; gap: 4px; padding: 0 0 10px; border: 0; border-radius: 14px; overflow: hidden; background: var(--card); color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.dl-g:hover { background: var(--card-hover); }
+.dl-g img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+.dl-g b, .dl-g small { padding: 0 12px; } .dl-g small { opacity: .7; }
+.dl-add { display: flex; gap: 8px; margin: 6px 0 10px; } .dl-add input { flex: 1; }
+.dl-res { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.dl-pick { display: grid; grid-template-columns: 90px 1fr auto 30px; align-items: center; gap: 12px; padding: 6px 10px; border: 0; border-radius: 12px; background: var(--card); color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.dl-pick:hover { background: var(--card-hover); } .dl-pick img { width: 90px; height: 34px; object-fit: cover; border-radius: 6px; } .dl-pick span { font-size: 20px; color: var(--accent); }
+.st-row.dl-w { grid-template-columns: 90px minmax(140px, 1fr) 80px 80px auto; }
+.dl-w img { width: 90px; height: 34px; object-fit: cover; border-radius: 6px; }
+.dl-add input { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.12)); background: var(--card); color: inherit; font: inherit; }

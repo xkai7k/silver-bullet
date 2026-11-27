@@ -625,12 +625,13 @@ function renderPage() {
         ${p.items.length > 8 ? `<label class="pg-search"><span>🔍</span><input id="pgSearch" type="search" autocomplete="off" placeholder="${p.type === 'games' ? 'دوّر على لعبة…' : 'دوّر…'}  (Ctrl+F)" value="${esc(pageQuery.id === p.id ? pageQuery.q : '')}"><b id="pgCount"></b></label>` : ''}
         ${nNew ? `<button class="btn ghost sm new-clear" id="clearNew">✓ شيل علامة "جديد" عن الكل (${nNew})</button>` : ''}
       </div>` : '';
-    const seg = p.type === 'games' ? `<div class="seg pg-seg"><button data-gt="games" class="${gamesTab === 'games' ? 'on' : ''}">🎮 الألعاب</button><button data-gt="tor" class="${gamesTab === 'tor' ? 'on' : ''}">🧲 التورنت <small>${(data.torLib || []).filter((t) => t.state !== 'done').length || ''}</small></button><button data-gt="space" class="${gamesTab === 'space' ? 'on' : ''}">💾 المساحة</button><button data-gt="stats" class="${gamesTab === 'stats' ? 'on' : ''}">📊 وقتي</button></div>` : '';
+    const seg = p.type === 'games' ? `<div class="seg pg-seg"><button data-gt="games" class="${gamesTab === 'games' ? 'on' : ''}">🎮 الألعاب</button><button data-gt="tor" class="${gamesTab === 'tor' ? 'on' : ''}">🧲 التورنت <small>${(data.torLib || []).filter((t) => t.state !== 'done').length || ''}</small></button><button data-gt="space" class="${gamesTab === 'space' ? 'on' : ''}">💾 المساحة</button><button data-gt="stats" class="${gamesTab === 'stats' ? 'on' : ''}">📊 وقتي</button><button data-gt="deals" class="${gamesTab === 'deals' ? 'on' : ''}">🎁 عروض</button></div>` : '';
     view.innerHTML = seg + chips + tools + body + (p.items.length ? '' : `<div class="empty">${emptyMsg}</div>`) + '<div class="empty small" id="noHits" hidden>ما لقيت شي بهالاسم</div>';
     view.querySelectorAll('[data-gt]').forEach((b) => b.onclick = () => { gamesTab = b.dataset.gt; renderPage(); });
     if (p.type === 'games' && gamesTab === 'tor') { renderTorLib(seg); return; }
     if (p.type === 'games' && gamesTab === 'space') { renderSpace(seg, p); return; }
     if (p.type === 'games' && gamesTab === 'stats') { renderStats(seg); return; }
+    if (p.type === 'games' && gamesTab === 'deals') { renderDeals(seg); return; }
   }
 
   wireImages(view);
@@ -1101,7 +1102,11 @@ async function runImport(kind, target = null, quiet = false) {
   for (const g of res.games) {
     const existing = allItems().find((i) => i.target === g.target && JSON.stringify(i.args || null) === JSON.stringify(g.args || null));
     if (existing) {
-      if (g.steamMinutes !== undefined) existing.steamMinutes = g.steamMinutes;
+      if (g.steamMinutes !== undefined) {
+        const grew = g.steamMinutes - (existing.steamMinutes ?? g.steamMinutes);
+        if (grew > 0 && grew < 7 * 24 * 60) { (data.playLog ||= []).push({ id: existing.id, t: Date.now(), s: grew * 60, steam: 1 }); existing.lastPlayed = Date.now(); }
+        existing.steamMinutes = g.steamMinutes;
+      }
       if (!existing.image && g.image) existing.image = g.image;
       if (!existing.hero && g.hero) existing.hero = g.hero;
       updated++;
@@ -2777,6 +2782,7 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
       else if (k === 'importall') importAllGames();
       else if (k === 'pedit') openPageEditor(v || 'games');
       else if (k === 'romsync') syncRomGames();
+      else if (k === 'gt') { goPage('games'); gamesTab = v || 'games'; renderPage(); }
       else if (k === 'card') { const g = allItems().find((i) => i.ratings && Object.keys(i.ratings).length) || { ...(page('games')?.items[0] || {}), ratings: { 'الجرافيكس': 9, 'الجيم بلاي': 8, 'القصة': 7, 'الساوند تراك': 9 }, ratingNote: 'لعبة ممتعة مع الشباب' }; window.RateCard?.draw(g).then((u) => { const d = document.createElement('dialog'); d.innerHTML = `<img src="${u}" style="max-height:80vh;display:block">`; document.body.appendChild(d); d.showModal(); }); }
       else if (k === 'showart') pv.showCover?.(decodeURIComponent(v)).then((r) => pv.log('showart ' + v + ' → ' + JSON.stringify(r) + ' name=' + showNameOf('مشاهدة مسلسل Friends الموسم الاول الحلقة 1 مترجمة - توب سينما', '')));
       else if (k === 'selftest') selfTest();
@@ -3095,6 +3101,57 @@ pv.onTorShare((f) => addToTorLib(f, false, true));
 $('#setLang').onchange = () => window.I18n?.set($('#setLang').value);
 
 // ---------- "📊 وقتي": how much you play, and what ----------
+// the last 7 days, per game (games opened from here, plus Steam time as it grows)
+function weekGames() {
+  const by = new Map();
+  for (const x of data.playLog || []) {
+    if (x.t < Date.now() - 7 * 864e5) continue;
+    const f = findItem(x.id); if (!f) continue;
+    const e = by.get(x.id) || { item: f.item, s: 0, n: 0 }; e.s += x.s; e.n++; by.set(x.id, e);
+  }
+  return [...by.values()].map((e) => ({ ...e, m: Math.round(e.s / 60) })).filter((e) => e.m > 0).sort((a, b) => b.m - a.m);
+}
+// once a week (Friday evening) the week's summary goes to the phone
+function weeklyNote() {
+  const d = new Date();
+  if (d.getDay() !== 5 || d.getHours() < 18 || Date.now() - (data.weekNoteAt || 0) < 5 * 864e5) return;
+  data.weekNoteAt = Date.now(); save();
+  const wk = weekGames(); if (!wk.length) return;
+  const total = wk.reduce((a, x) => a + x.m, 0);
+  pv.phoneNote?.('📊 أسبوعك في الألعاب', `لعبت ${fmtTime(total)}. أكثر لعبة: ${wk[0].item.name} (${fmtTime(wk[0].m)})` + (wk[1] ? `، بعدها ${wk[1].item.name}` : ''));
+}
+setTimeout(weeklyNote, 60000); setInterval(weeklyNote, 30 * 60 * 1000);
+
+// ---------- "🎁 عروض": free games now, and your wishlist with price-drop alerts ----------
+async function renderDeals(seg) {
+  const d = await pv.dealsGet(false).catch(() => ({ free: [], wish: [] }));
+  if (currentPageId !== 'games' || gamesTab !== 'deals') return;
+  const usd = (n) => (n == null ? '' : '$' + Number(n).toFixed(2));
+  const ends = (t) => { const x = Date.parse(String(t).replace(' ', 'T')); if (!x) return ''; const days = Math.ceil((x - Date.now()) / 864e5); return days <= 0 ? 'آخر يوم' : days === 1 ? 'باقي يوم' : `باقي ${days} أيام`; };
+  view.innerHTML = seg + `
+    <h3 class="st-h">🎁 ببلاش الحين <button class="btn sm" id="dlRef">↻ حدّث</button></h3>
+    <p class="hint">اضغط اللعبة يفتح صفحتها في المتجر، وتضيفها لحسابك من هناك وتصير لك للأبد.</p>
+    <div class="dl-free">${(d.free || []).map((g) => `<button class="dl-g" data-url="${esc(g.url)}">${g.image ? `<img src="${esc(g.image)}" loading="lazy" alt="">` : ''}<b dir="auto">${esc(g.title)}</b><small>${esc(g.store)}${g.worth ? ` • كانت ${esc(g.worth)}` : ''}${g.ends ? ` • ${ends(g.ends)}` : ''}</small></button>`).join('') || '<div class="empty small">ما فيه ألعاب ببلاش الحين، أو ما قدرت أوصل للموقع. بيوصلك تنبيه أول ما تنزل وحدة.</div>'}</div>
+    <h3 class="st-h">📉 قائمة أمنياتي</h3>
+    <p class="hint">ضيف لعبة، وإذا نزل سعرها في أي متجر يوصلك تنبيه هنا وعلى الجوال. الأسعار بالدولار.</p>
+    <div class="dl-add"><input id="dlQ" type="search" placeholder="اسم اللعبة بالإنجليزي…" dir="auto"><button class="btn primary" id="dlFind">دوّر</button></div>
+    <div class="dl-res" id="dlRes"></div>
+    <div class="st-list">${(d.wish || []).map((w) => `<div class="st-row dl-w" data-id="${esc(w.gameID)}">${w.thumb ? `<img src="${esc(w.thumb)}" alt="">` : '<span></span>'}<b dir="auto">${esc(w.title)}</b><span class="st-t">${usd(w.price)}</span><small>${w.retail && w.price != null && w.price < w.retail ? `خصم ${Math.round((1 - w.price / w.retail) * 100)}%` : ''}</small><button class="btn sm danger" data-un="${esc(w.gameID)}">✕</button></div>`).join('') || '<div class="empty small">القائمة فاضية</div>'}</div>`;
+  view.querySelectorAll('[data-gt]').forEach((b) => b.onclick = () => { gamesTab = b.dataset.gt; renderPage(); });
+  view.querySelectorAll('.dl-g').forEach((b) => b.onclick = () => pv.dealsOpen(b.dataset.url));
+  view.querySelectorAll('.dl-w').forEach((r) => r.onclick = (e) => { if (e.target.closest('[data-un]')) return; const w = (d.wish || []).find((x) => x.gameID === r.dataset.id); if (w?.dealID) pv.dealsOpen('https://www.cheapshark.com/redirect?dealID=' + w.dealID); });
+  view.querySelectorAll('[data-un]').forEach((b) => b.onclick = async () => { await pv.dealsWish({ gameID: b.dataset.un }, false); toast('شلتها من القائمة'); renderDeals(seg); });
+  $('#dlRef').onclick = async () => { $('#dlRef').disabled = true; await pv.dealsGet(true).catch(() => {}); renderDeals(seg); };
+  const find = async () => {
+    const q = $('#dlQ').value.trim(); if (!q) return;
+    $('#dlRes').innerHTML = '<div class="empty small">أدوّر…</div>';
+    const r = await pv.dealsSearch(q).catch(() => ({ error: 1 }));
+    if (!Array.isArray(r)) { $('#dlRes').innerHTML = '<div class="empty small">ما قدرت أوصل لموقع الأسعار، جرّب بعدين</div>'; return; }
+    $('#dlRes').innerHTML = r.map((g, i) => `<button class="dl-pick" data-i="${i}">${g.thumb ? `<img src="${esc(g.thumb)}" alt="">` : ''}<b dir="auto">${esc(g.title)}</b><small>${usd(g.price)}</small><span>＋</span></button>`).join('') || '<div class="empty small">ما لقيت شي بهالاسم</div>';
+    $('#dlRes').querySelectorAll('.dl-pick').forEach((b) => b.onclick = async () => { const g = r[b.dataset.i]; await pv.dealsWish(g, true); toast(`📉 ضفت ${g.title}: بنبهك إذا نزل سعرها`); renderDeals(seg); });
+  };
+  $('#dlFind').onclick = find; $('#dlQ').onkeydown = (e) => { if (e.key === 'Enter') find(); };
+}
 function renderStats(seg) {
   const games = allItems().filter((i) => isGameItem(i) && playMinutes(i) > 0).sort((a, b) => playMinutes(b) - playMinutes(a));
   const total = games.reduce((a, i) => a + playMinutes(i), 0);
@@ -3105,9 +3162,14 @@ function renderStats(seg) {
   const days = Array.from({ length: 14 }, (_, k) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (13 - k)); const a = d.getTime(), b = a + 864e5; return { d, m: Math.round(log.filter((x) => x.t >= a && x.t < b).reduce((s, x) => s + x.s, 0) / 60) }; });
   const maxD = Math.max(1, ...days.map((x) => x.m)), max = Math.max(1, ...games.map(playMinutes));
   const when = (t) => !t ? '' : new Date(t).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'short' });
+  const wk = weekGames();
+  const wkMax = Math.max(1, ...wk.map((x) => x.m));
   view.innerHTML = seg + `
     <div class="st-cards"><div><b>${fmtTime(total)}</b><small>كل وقتك</small></div><div><b>${fmtTime(week)}</b><small>آخر ٧ أيام</small></div><div><b>${fmtTime(month)}</b><small>آخر ٣٠ يوم</small></div><div><b>${games.length}</b><small>لعبة لعبتها</small></div></div>
     <div class="st-days">${days.map((x) => `<div title="${when(x.d)}: ${fmtTime(x.m)}"><i style="height:${Math.round((x.m / maxD) * 100)}%"></i><small>${x.d.getDate()}</small></div>`).join('')}</div>
+    <h3 class="st-h">🗓 هالأسبوع${wk[0] ? ` <small>أكثر لعبة: <b dir="auto">${esc(wk[0].item.name)}</b></small>` : ''}</h3>
+    <div class="st-list st-week">${wk.slice(0, 10).map((x, n) => `<div class="st-row" data-item="${x.item.id}"><span class="st-n">${n + 1}</span><b dir="auto">${esc(x.item.name)}</b><span class="st-bar"><i style="width:${Math.max(2, Math.round((x.m / wkMax) * 100))}%"></i></span><span class="st-t">${fmtTime(x.m)}</span><small>${x.n} ${x.n === 1 ? 'مرة' : 'مرات'}</small></div>`).join('') || '<div class="empty small">ما لعبت شي آخر ٧ أيام</div>'}</div>
+    <h3 class="st-h">🏆 كل الوقت</h3>
     <div class="st-list">${games.slice(0, 60).map((i, n) => `<div class="st-row" data-item="${i.id}"><span class="st-n">${n + 1}</span><b dir="auto">${esc(i.name)}</b><span class="st-bar"><i style="width:${Math.max(2, Math.round((playMinutes(i) / max) * 100))}%"></i></span><span class="st-t">${fmtTime(playMinutes(i))}</span><small>${i.lastPlayed ? 'آخر مرة ' + when(i.lastPlayed) : ''}</small></div>`).join('') || '<div class="empty">لسا ما لعبت شي من هنا. وقت اللعب ينحسب لحاله لما تفتح اللعبة من البرنامج.</div>'}</div>
     <p class="hint">وقت ستيم ينحسب من ستيم نفسه، والباقي من البرنامج لما تفتح اللعبة منه.</p>`;
   view.querySelectorAll('[data-gt]').forEach((b) => b.onclick = () => { gamesTab = b.dataset.gt; renderPage(); });

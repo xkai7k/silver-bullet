@@ -69,13 +69,30 @@ function setupTorrents(ctx) {
   const finished = new Set();
   async function tick() {
     try {
-      const keys = ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'numSeeders', 'connections', 'files', 'bittorrent', 'errorMessage', 'followedBy'];
+      const keys = ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'numSeeders', 'connections', 'files', 'bittorrent', 'errorMessage', 'followedBy', 'dir'];
       const list = [...await rpc('aria2.tellActive', [keys]), ...await rpc('aria2.tellWaiting', [0, 20, keys]), ...await rpc('aria2.tellStopped', [0, 20, keys])];
       const items = list.filter((x) => !(x.followedBy && x.followedBy.length)).map((x) => ({
         gid: x.gid, status: x.status, name: x.bittorrent?.info?.name || path.basename(x.files?.[0]?.path || '') || decodeURIComponent(String(x.files?.[0]?.uris?.[0]?.uri || '').split('/').pop().split('?')[0]) || 'تحميل',
         total: Number(x.totalLength), done: Number(x.completedLength), speed: Number(x.downloadSpeed), peers: Number(x.numSeeders || x.connections || 0), error: x.errorMessage,
       }));
       send({ status: 'list', items });
+      // not enough room on the drive for what's left: pause it before the disk fills up
+      tick.full ||= {};
+      for (const x of list) {
+        if (x.status !== 'active' || !(Number(x.totalLength) > 0) || tick.full[x.gid]) continue;
+        let free = Infinity; try { const f = fs.statfsSync(x.dir || OUT); free = f.bavail * f.bsize; } catch {}
+        const left = Number(x.totalLength) - Number(x.completedLength);
+        if (left > free - 512 * 1048576) {
+          tick.full[x.gid] = 1;
+          const name = x.bittorrent?.info?.name || 'التحميل', gb = (n) => (n / 1073741824).toFixed(1) + ' GB';
+          rpc('aria2.pause', [x.gid]).catch(() => {});
+          const msg = `${name} يحتاج ${gb(left)} والفاضي ${gb(Math.max(0, free))} بس. وقّفته؛ فضّ مساحة وكمّله من صفحة التورنت.`;
+          log('torrent paused: disk full', name, gb(left), 'needed', gb(free), 'free');
+          send({ status: 'note', text: '💾 ' + msg });
+          try { const { Notification } = require('electron'); new Notification({ title: '💾 المساحة ما تكفي', body: msg }).show(); } catch {}
+          try { phoneNote?.('💾 المساحة ما تكفي', msg); } catch {}
+        }
+      }
       // nobody sharing it: say so instead of sitting at 0% forever
       tick.zero ||= {};
       for (const i of items) {
@@ -126,6 +143,7 @@ function setupTorrents(ctx) {
     } catch (e) { log('torrent add failed', e.message); return { error: e.message }; }
   }
   ipcMain.handle('tor:act', async (_e, gid, act) => {
+    if (act === 'resume' && tick.full) delete tick.full[gid]; // checked again: still no room → paused again
     try { await ensure(); await rpc(act === 'pause' ? 'aria2.pause' : act === 'resume' ? 'aria2.unpause' : 'aria2.remove', [gid]); if (act === 'remove') await rpc('aria2.removeDownloadResult', [gid]).catch(() => {}); return true; }
     catch { try { await rpc('aria2.removeDownloadResult', [gid]); } catch {} return false; }
   });

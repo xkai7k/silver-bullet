@@ -17,6 +17,13 @@
     'الصفحة فاضية، ادخلها وأضف أشياء.': 'This page is empty, open it and add things.', 'الصفحة فاضية. اضغط "⤓ استيراد" لجلب ألعابك من ستيم وإبيك، أو + لإضافة لعبة.': 'This page is empty. Press "⤓ Import" to bring your Steam & Epic games, or + to add one.',
     'اسحب أي برنامج أو اختصار من سطح المكتب وأفلته هنا، أو اضغط +.': 'Drag any app or shortcut from the desktop and drop it here, or press +.', 'حط مودات وتعريبات ألعابك في مجلد المودات، أو أضف هنا أي ملف أو مجلد.': 'Put your mods and translations in the Mods folder, or add any file or folder here.',
     'اضغط "⚙ المحاكيات" فوق، واختر المحاكي ومجلد الألعاب لكل منصة، وتنضاف الألعاب لحالها.': 'Press "⚙ Emulators" above, pick the emulator and games folder for each system, and games add themselves.',
+    // ---- deals, the week ----
+    '🎁 عروض': '🎁 Deals', '🎁 ببلاش الحين': '🎁 Free right now', '↻ حدّث': '↻ Refresh', 'اضغط اللعبة يفتح صفحتها في المتجر، وتضيفها لحسابك من هناك وتصير لك للأبد.': 'Tap a game to open its store page, claim it there and it is yours to keep.',
+    'ما فيه ألعاب ببلاش الحين، أو ما قدرت أوصل للموقع. بيوصلك تنبيه أول ما تنزل وحدة.': 'No free games right now, or the site could not be reached. You will get an alert when one appears.',
+    '📉 قائمة أمنياتي': '📉 My wishlist', 'ضيف لعبة، وإذا نزل سعرها في أي متجر يوصلك تنبيه هنا وعلى الجوال. الأسعار بالدولار.': 'Add a game and get an alert here and on your phone when its price drops in any store. Prices in USD.',
+    'اسم اللعبة بالإنجليزي…': 'Game name…', 'دوّر': 'Search', 'القائمة فاضية': 'The list is empty', 'أدوّر…': 'Searching…', 'ما لقيت شي بهالاسم': 'Nothing found with that name',
+    'ما قدرت أوصل لموقع الأسعار، جرّب بعدين': 'Could not reach the price site, try later', 'شلتها من القائمة': 'Removed from the list',
+    '🗓 هالأسبوع': '🗓 This week', 'أكثر لعبة:': 'Most played:', '🏆 كل الوقت': '🏆 All time', 'ما لعبت شي آخر ٧ أيام': 'Nothing played in the last 7 days', 'مرة': 'time', 'مرات': 'times',
     // ---- games page ----
     '🎮 مثبتة على جهازك': '🎮 Installed on this PC', '📚 مكتبتي': '📚 My library', 'ألعاب عندي بس مو مثبتة • {n}': 'Owned but not installed • {n}', '⟳ جيب ألعابي من ستيم وإيبك': '⟳ Get my Steam & Epic games', 'لعبة عندي': 'Owned game',
     '🧲 التورنت': '🧲 Torrents', '💾 المساحة': '💾 Space', 'أضف ملف تورنت': 'Add a torrent file', 'احفظ هنا ملفات التورنت حق الألعاب بدون ما تحملها. لما تضغط ⬇ تنزيل يحملها ويفكها ويجهزها، وتنضاف للألعاب لحالها.': 'Keep game torrents here without downloading them. Press ⬇ Download and it downloads, unpacks and prepares the game, then adds it to Games.',
