@@ -1883,8 +1883,8 @@ public class SBWins {
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
   [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int s);
-  public static List<string> Close(string[] skip) {
-    var done = new List<string>(); var skipSet = new HashSet<string>(skip, StringComparer.OrdinalIgnoreCase);
+  public static List<uint> Close(string[] skip, bool post) {
+    var done = new List<uint>(); var skipSet = new HashSet<string>(skip, StringComparer.OrdinalIgnoreCase);
     EnumWindows((h, l) => {
       if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero || GetWindowTextLength(h) == 0) return true;
       int ex = GetWindowLong(h, -20); if ((ex & 0x80) != 0 && (ex & 0x40000) == 0) return true;
@@ -1892,14 +1892,31 @@ public class SBWins {
       uint pid; GetWindowThreadProcessId(h, out pid); string n = "";
       try { n = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch {}
       if (skipSet.Contains(n)) return true;
-      PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero); done.Add(n); return true; }, IntPtr.Zero);
+      if (post) PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero); if (!done.Contains(pid)) done.Add(pid); return true; }, IntPtr.Zero);
     return done;
   }
 }
 '@
-$d = [SBWins]::Close(@('${me}','electron','explorer','claude','ShellExperienceHost','StartMenuExperienceHost','SearchHost','TextInputHost','LockApp','sbwake','sbinput','sbwatch','Taskmgr'))
+$skip = @('${me}','electron','explorer','claude','ShellExperienceHost','StartMenuExperienceHost','SearchHost','TextInputHost','LockApp','sbwake','sbinput','sbwatch','Taskmgr')
+$d = [SBWins]::Close($skip, $true)
+Start-Sleep -Seconds 5
+# apps that only hid themselves (Steam, Discord, Spotify... sit by the clock) are ended for good;
+# one still showing a window (an "unsaved changes?" question) is left for you to answer
+$still = [SBWins]::Close($skip, $false)
+# end the whole app, not just its window part (Steam's window belongs to steamwebhelper, a child of steam.exe)
+$stop = @('${me}','electron','claude','explorer','svchost','services','wininit','winlogon','userinit','sihost','sbwake','RuntimeBroker','ApplicationFrameHost','dllhost','taskhostw','cmd','powershell','conhost')
+$all = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name
+$roots = @()
+foreach ($p in $d) {
+  if ($still -contains $p) { continue }
+  $cur = $all | Where-Object { $_.ProcessId -eq $p }
+  if (-not $cur -or $cur.Name -eq 'ApplicationFrameHost.exe') { continue }
+  for ($n = 0; $n -lt 12; $n++) { $par = $all | Where-Object { $_.ProcessId -eq $cur.ParentProcessId }; if (-not $par -or $stop -contains ($par.Name -replace '\\.exe$','')) { break }; $cur = $par }
+  if ($roots -notcontains $cur.ProcessId) { $roots += $cur.ProcessId }
+}
+foreach ($r in $roots) { Start-Process taskkill -ArgumentList '/PID', $r, '/T', '/F' -WindowStyle Hidden -Wait }
 Write-Output ($d.Count)`;
-    const out = await new Promise((r) => execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 20000 }, (e, o) => r(e ? '' : String(o || '').trim())));
+    const out = await new Promise((r) => execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 45000 }, (e, o) => r(e ? '' : String(o || '').trim())));
     const n = parseInt(out, 10);
     if (isNaN(n)) return { ok: false, msg: 'ما قدرت' };
     return { ok: true, msg: n ? '🧹 سكّرت ' + n + ' نوافذ' : 'ما فيه نوافذ مفتوحة' };
