@@ -481,7 +481,7 @@ async function scanForEmus() {
   for (const r of roots) await walk(r, 3);
   foundEmus = [...out];
   try { fs.writeFileSync(foundEmusFile(), JSON.stringify(foundEmus, null, 1)); } catch {}
-  log('emulators found on this PC:', foundEmus.map((f) => path.basename(f)).join(', ') || 'none');
+  log('emulators found on this PC:', [...new Set(foundEmus.map((f) => path.basename(f).toLowerCase()))].join(', ') || 'none');
   return foundEmus;
 }
 function installedEmus() { try { return JSON.parse(fs.readFileSync(emuIndexFile(), 'utf8')); } catch { return []; } }
