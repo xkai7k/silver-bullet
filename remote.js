@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
-module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getWin, mediaAsk, mediaKey, setVolume, torAdd, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall, steamDl, steamClear, steamAct, shareFile, sharedList, sharedDel, steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit }) {
+module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getWin, mediaAsk, mediaKey, setVolume, torAdd, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall, steamDl, steamClear, steamAct, shareFile, sharedList, sharedDel, phoneVersion, steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit }) {
   const PORT = 8766;
   const cfgFile = path.join(app.getPath('userData'), 'remote.json');
   let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8').replace(/^\uFEFF/, '')); } catch {}
@@ -46,11 +46,11 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
     } catch { try { res.writeHead(404); res.end(); } catch {} }
   }
   // an episode, streamed with seeking (Range) so the phone/iPad player can jump around; ?dl=1 downloads it
-  function sendVideo(req, res, file, dl) {
+  function sendVideo(req, res, file, dl, shownAs) {
     let st; try { st = fs.statSync(file); } catch { res.writeHead(404); return res.end(); }
     const type = VID[path.extname(file).toLowerCase()] || IMG[path.extname(file).toLowerCase()] || 'application/octet-stream';
     const head = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' };
-    if (dl) head['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`;
+    if (dl) head['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(shownAs || file).replace(/\.[^.]+$/, '') + path.extname(file))}`;
     const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
     if (m) {
       let a = m[1] ? Number(m[1]) : st.size - Number(m[2]), b = m[1] && m[2] ? Number(m[2]) : st.size - 1;
@@ -179,7 +179,7 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
         const im = /^\/img\/([\w-]+)$/.exec(u.pathname);
         if (im) return sendImg(res, imgs.get(im[1]));
         const ev = /^\/ep\/([\w-]+)$/.exec(u.pathname);
-        if (ev) { const f = eps.get(ev[1]) || sharedIds.get(ev[1]); if (!f) { res.writeHead(404); return res.end(); } if (IMG[path.extname(f.file).toLowerCase()] && u.searchParams.get('dl') !== '1') return sendImg(res, f.file); return sendVideo(req, res, f.file, u.searchParams.get('dl') === '1'); }
+        if (ev) { const f = eps.get(ev[1]) || sharedIds.get(ev[1]); if (!f) { res.writeHead(404); return res.end(); } if (IMG[path.extname(f.file).toLowerCase()] && u.searchParams.get('dl') !== '1') return sendImg(res, f.file); return sendVideo(req, res, (await phoneVersion?.(f.file)) || f.file, u.searchParams.get('dl') === '1', f.file); }
         if (u.pathname === '/api/cmd' && req.method === 'POST') { const r = await api('cmd', await body(req), 'wifi', ipOf()); return json(res, r, r.code || 200); }
         res.writeHead(404); res.end();
       } catch (e) { log('remote error', e.message); try { json(res, { ok: false }, 500); } catch {} }

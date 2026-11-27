@@ -1143,6 +1143,63 @@ ipcMain.handle('videos:local', (_e, skip) => {
   return out.sort((a, b) => b.at - a.at).slice(0, 60);
 });
 
+// ---------- 🎬 Clips for the phone: one sound track ----------
+// Recorders like Kairos keep several sound tracks in a clip (mix, game, Discord, mic, other). The PC copes; the iPhone
+// stumbles (the clip speeds up and slows down, the sound breaks). So what goes to the phone keeps the video exactly as it
+// is and only the first (mixed) sound: no re-encoding, a few seconds. ffmpeg is fetched once, the first time it's needed.
+let ffPromise = null;
+function ffmpegExe() {
+  if (ffPromise) return ffPromise;
+  ffPromise = (async () => {
+    const dir = path.join(app.getPath('userData'), 'tools'), exe = path.join(dir, 'ffmpeg.exe');
+    if (fs.existsSync(exe)) return exe;
+    const onPath = await new Promise((r) => execFile('where', ['ffmpeg'], { windowsHide: true }, (e, out) => r(!e && String(out).split(/\r?\n/)[0].trim())));
+    if (onPath && fs.existsSync(onPath)) return onPath;
+    log('ffmpeg: downloading (once)');
+    fs.mkdirSync(dir, { recursive: true });
+    const zip = path.join(dir, 'ffmpeg.zip'), tmp = path.join(dir, 'ffx');
+    await download('https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip', zip, () => {});
+    await extract(zip, tmp);
+    const find = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) { const x = find(f); if (x) return x; } else if (/^ffmpeg\.exe$/i.test(e.name)) return f; } return null; };
+    const got = find(tmp); if (!got) throw new Error('no ffmpeg.exe in the zip');
+    fs.copyFileSync(got, exe);
+    try { fs.rmSync(tmp, { recursive: true, force: true }); fs.unlinkSync(zip); } catch {}
+    log('ffmpeg ready');
+    return exe;
+  })().catch((e) => { log('ffmpeg failed', e.message); ffPromise = null; return null; });
+  return ffPromise;
+}
+async function audioTracks(ff, file) {
+  return new Promise((r) => execFile(ff, ['-hide_banner', '-i', file], { windowsHide: true, timeout: 20000 }, (_e, _o, err) => r((String(err || '').match(/Stream #\d+:\d+[^\n]*: Audio/g) || []).length)));
+}
+// makes `out` a phone-friendly copy of `file` when it needs one; false = the original is fine as it is
+async function phoneRemux(file, out) {
+  if (!VIDEO_EXT.test(file)) return false;
+  const ff = await ffmpegExe(); if (!ff) return false;
+  if ((await audioTracks(ff, file)) < 2) return false;
+  const ok = await new Promise((r) => execFile(ff, ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-map', '0:a:0', '-c', 'copy', '-movflags', '+faststart', out], { windowsHide: true, timeout: 30 * 60000 }, (e) => r(!e)));
+  if (!ok) { try { fs.unlinkSync(out); } catch {} log('phone copy failed', path.basename(file)); return false; }
+  log('phone copy: one sound track', path.basename(file));
+  return true;
+}
+setTimeout(() => ffmpegExe(), 3 * 60000); // fetched quietly ahead of time, so the first clip isn't kept waiting
+// what the phone plays or downloads: the one-track copy (kept for a day), made the first time it's asked for
+const phoneCacheDir = () => path.join(app.getPath('temp'), 'silver-bullet-phone');
+const phoneMaking = new Map();
+async function phoneVersion(file) {
+  try {
+    const st = fs.statSync(file); if (!VIDEO_EXT.test(file) || st.size > 6 * 1024 ** 3) return file;
+    const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
+    for (const f of fs.readdirSync(dir)) { try { const p = path.join(dir, f); if (Date.now() - fs.statSync(p).mtimeMs > 864e5) fs.unlinkSync(p); } catch {} }
+    const key = require('crypto').createHash('md5').update(file + st.mtimeMs).digest('hex').slice(0, 16);
+    const out = path.join(dir, key + '.mp4'), plain = out + '.plain';
+    if (fs.existsSync(out)) return out;
+    if (fs.existsSync(plain)) return file;
+    if (!phoneMaking.has(key)) phoneMaking.set(key, phoneRemux(file, out).then((made) => { phoneMaking.delete(key); if (!made) try { fs.writeFileSync(plain, ''); } catch {} return made; }));
+    return (await phoneMaking.get(key)) ? out : file;
+  } catch { return file; }
+}
+
 // ---------- 📁 Shared with the phone: a folder in OneDrive ----------
 // An episode you send there is uploaded by OneDrive by itself; on the phone the OneDrive app has it
 // (download it there and watch without internet). Whatever you drop in from the phone comes down to the PC.
@@ -1161,8 +1218,9 @@ async function shareFile(file) {
     let free = Infinity; try { const f = fs.statfsSync(dir); free = f.bavail * f.bsize; } catch {}
     if (fs.statSync(file).size > free - 512 * 1048576) return { ok: false, msg: 'المساحة ما تكفي في OneDrive' };
     sharingNow.add(to); log('shared: copying', path.basename(file));
+    const copy = () => phoneRemux(file, to).then((made) => (made ? null : fs.promises.copyFile(file, to))); // clips with several sound tracks: one track for the phone
     const ix = sharedIndex(); ix[to.toLowerCase()] = { src: file, at: Date.now() }; saveSharedIndex(ix);
-    fs.promises.copyFile(file, to).then(() => { sharingNow.delete(to); log('shared: ready', path.basename(file)); try { remoteApi?.notifyPhone?.('☁️ جاهزة في OneDrive', path.basename(file)); } catch {} })
+    copy().then(() => { sharingNow.delete(to); log('shared: ready', path.basename(file)); try { remoteApi?.notifyPhone?.('☁️ جاهزة في OneDrive', path.basename(file)); } catch {} })
       .catch((e) => { sharingNow.delete(to); log('shared copy failed', e.message); });
     return { ok: true };
   } catch (e) { log('share failed', e.message); return { ok: false }; }
@@ -1773,7 +1831,7 @@ function helperExe(name = 'sbwatch') {
   return new Promise((res) => execFile(csc, ['/nologo', '/optimize+', '/target:exe', '/platform:anycpu', `/out:${exe}`, src], { windowsHide: true, timeout: 60000 }, (err, out) => { if (err) log('helper build failed', String(out || err.message).slice(0, 400)); res(err ? null : exe); }));
 }
 const SELF = /^(silver bullet|preview|electron|explorer|searchhost|startmenuexperiencehost|shellexperiencehost|textinputhost|lockapp|applicationframehost)\.exe$/i;
-const NOT_GAME = /^(chrome|msedge|brave|firefox|opera|discord|spotify|telegram|whatsapp|vlc|mpc-hc64|potplayermini64|code|notepad|explorer|taskmgr|obs64|steam|epicgameslauncher|eadesktop|battle\.net|nvidia app|powerpnt|winword|excel|claude|githubdesktop|pickerhost|git-credential-manager|ntfy)\.exe$/i;
+const NOT_GAME = /^(chrome|msedge|brave|firefox|opera|discord|spotify|telegram|whatsapp|vlc|mpc-hc64|potplayermini64|code|notepad|explorer|taskmgr|obs64|steam|epicgameslauncher|eadesktop|battle\.net|nvidia app|powerpnt|winword|excel|claude|githubdesktop|pickerhost|git-credential-manager|ntfy|fpsrunner|razer[^\\/]*|sbinput)\.exe$/i;
 function setRest(next, why) {
   if (restState.game === next) return;
   restState.game = next; restState.reason = why;
@@ -2446,7 +2504,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, phoneVersion, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;
