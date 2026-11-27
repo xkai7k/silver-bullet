@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
-module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getWin, mediaAsk, mediaKey, setVolume, torAdd, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall, steamDl, steamClear, steamAct, shareFile, sharedList, sharedDel, phoneVersion, phoneSmall, clipMeta, videoFrame, steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit }) {
+module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getWin, mediaAsk, mediaKey, setVolume, torAdd, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall, steamDl, steamClear, steamAct, shareFile, sharedList, sharedDel, phoneVersion, phoneSmall, phoneClip, clipMeta, videoFrame, steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit }) {
   const PORT = 8766;
   const cfgFile = path.join(app.getPath('userData'), 'remote.json');
   let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf8').replace(/^\uFEFF/, '')); } catch {}
@@ -152,7 +152,8 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
     if (c.type === 'torAct' && c.id && /^(pause|resume|remove)$/.test(c.act || '')) { send({ type: 'torAct', id: String(c.id), act: c.act }); return { ok: true }; }
     if (c.type === 'fileInfo' && c.id) {
       const f = eps.get(String(c.id)) || sharedIds.get(String(c.id)); if (!f) return { ok: false };
-      const file = (c.small && /\.(mp4|mkv|mov|webm|avi)$/i.test(f.file) ? await phoneSmall?.(f.file) : await phoneVersion?.(f.file)) || f.file; let st; try { st = fs.statSync(file); } catch { return { ok: false }; }
+      const isVid = /\.(mp4|mkv|mov|webm|avi)$/i.test(f.file);
+      const file = (f.shot && isVid && phoneClip ? await phoneClip(f.file, !!c.small) : c.small && isVid ? await phoneSmall?.(f.file) : await phoneVersion?.(f.file)) || f.file; let st; try { st = fs.statSync(file); } catch { return { ok: false }; }
       if (st.size > 1024 ** 3) return { ok: false, msg: 'المقطع كبير (أكثر من ١ جيجا) يتحمّل من برا. حمّله وأنت على واي فاي البيت، أو حطه في OneDrive ☁️' };
       xfer.set(String(c.id) + (c.small ? ':s' : ''), file); log('phone: sending', path.basename(f.file), Math.round(st.size / 1048576) + 'MB');
       const ext = path.extname(file).toLowerCase();
@@ -197,7 +198,7 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
         const im = /^\/img\/([\w-]+)$/.exec(u.pathname);
         if (im) { let src = imgs.get(im[1]); if (/^vthumb:/.test(src || '')) src = await videoFrame?.(src.slice(7)); return sendImg(res, src); }
         const ev = /^\/ep\/([\w-]+)$/.exec(u.pathname);
-        if (ev) { const f = eps.get(ev[1]) || sharedIds.get(ev[1]); if (!f) { res.writeHead(404); return res.end(); } if (IMG[path.extname(f.file).toLowerCase()] && u.searchParams.get('dl') !== '1') return sendImg(res, f.file); return sendVideo(req, res, (await phoneVersion?.(f.file)) || f.file, u.searchParams.get('dl') === '1', f.file); }
+        if (ev) { const f = eps.get(ev[1]) || sharedIds.get(ev[1]); if (!f) { res.writeHead(404); return res.end(); } if (IMG[path.extname(f.file).toLowerCase()] && u.searchParams.get('dl') !== '1') return sendImg(res, f.file); return sendVideo(req, res, (f.shot && phoneClip && /\.(mp4|mkv|mov|webm|avi)$/i.test(f.file) ? await phoneClip(f.file, false) : await phoneVersion?.(f.file)) || f.file, u.searchParams.get('dl') === '1', f.file); }
         if (u.pathname === '/api/cmd' && req.method === 'POST') { const r = await api('cmd', await body(req), 'wifi', ipOf()); return json(res, r, r.code || 200); }
         res.writeHead(404); res.end();
       } catch (e) { log('remote error', e.message); try { json(res, { ok: false }, 500); } catch {} }

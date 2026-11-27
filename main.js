@@ -1271,6 +1271,35 @@ async function phoneSmall(file) {
   } catch { return file; }
 }
 
+// game clips for the phone: recorders (Razer, Kairos…) save at a changing frame rate with jumps in the timing,
+// which the PC shrugs off but an iPhone plays as stutter and freezes. So the clip is rebuilt at a steady 60/30 fps,
+// fresh timestamps, one sound track kept in step — by the graphics card, a few seconds per clip.
+const steadyMaking = new Map();
+async function phoneClip(file, small) {
+  try {
+    const st = fs.statSync(file); if (!VIDEO_EXT.test(file) || st.size > 4 * 1024 ** 3) return file;
+    const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
+    const key = require('crypto').createHash('md5').update('steady2' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
+    const out = path.join(dir, key + '.mp4');
+    if (fs.existsSync(out)) return out;
+    if (!steadyMaking.has(key)) steadyMaking.set(key, (async () => {
+      const ff = await ffmpegExe(); if (!ff) return false;
+      const vf = (small ? 'scale=-2:min(720\\,ih),' : '') + 'fps=' + (small ? 30 : 60) + ',format=yuv420p';
+      const base = ['-v', 'error', '-y', '-fflags', '+genpts+discardcorrupt', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', vf,
+        '-af', 'aresample=async=1000:first_pts=0', '-c:a', 'aac', '-b:a', small ? '128k' : '192k', '-ar', '48000', '-ac', '2',
+        '-fps_mode', 'cfr', '-g', small ? '60' : '120', '-profile:v', 'high', '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero'];
+      const tryEnc = (v) => new Promise((r) => execFile(ff, [...base, ...v, out], { windowsHide: true, timeout: 30 * 60000 }, (e) => r(!e && fs.existsSync(out) && fs.statSync(out).size > 1000)));
+      const ok = await tryEnc(small ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-b:v', '3M', '-maxrate', '4500k', '-bufsize', '9M']
+                                    : ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '21', '-b:v', '0', '-maxrate', '25M', '-bufsize', '50M'])
+        || await tryEnc(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', small ? '26' : '20']);
+      if (ok) log('phone steady copy', small ? '720p' : 'full', path.basename(file), Math.round(st.size / 1048576) + 'MB ->', Math.round(fs.statSync(out).size / 1048576) + 'MB');
+      else { try { fs.unlinkSync(out); } catch {} log('phone steady copy failed', path.basename(file)); }
+      return ok;
+    })().finally(() => steadyMaking.delete(key)));
+    return (await steadyMaking.get(key)) ? out : file;
+  } catch { return file; }
+}
+
 // ---------- 📁 Shared with the phone: a folder in OneDrive ----------
 // An episode you send there is uploaded by OneDrive by itself; on the phone the OneDrive app has it
 // (download it there and watch without internet). Whatever you drop in from the phone comes down to the PC.
@@ -2580,7 +2609,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, phoneVersion, phoneSmall, clipMeta, videoFrame, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, phoneVersion, phoneSmall, phoneClip, clipMeta, videoFrame, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;
