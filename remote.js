@@ -123,7 +123,27 @@ module.exports = function setupRemote({ ipcMain, app, net, log, wakeHelper, getW
   const netUrl = () => `https://raw.githack.com/xkai7k/silver-bullet/${pageSha}/docs/remote.html?k=${cfg.key}`;
   const info = () => ({ on: !!cfg.on, url: url(), fixed: `http://${host()}:${PORT}/?k=${cfg.key}`, qr: cfg.on ? qrSvgOf(url()) : '', net: !!cfg.net, ntfyOn: !!cfg.ntfyOn, ntfy: cfg.ntfy || '', key: cfg.key, netUrl: netUrl(), netQr: cfg.on && cfg.net ? qrSvgOf(netUrl()) : '' });
 
-  ipcMain.handle('remote:call', (_e, kind, c) => (cfg.on && cfg.net ? api(kind === 'state' ? 'state' : 'cmd', c) : { ok: false, error: 'off' }));
+  ipcMain.handle('remote:call', (_e, kind, c) => (!(cfg.on && cfg.net) ? { ok: false, error: 'off' } : kind === 'img' ? thumb(imgs.get(String(c?.id || ''))) : api(kind === 'state' ? 'state' : 'cmd', c)));
+  // a small JPEG of a picture, as text (the relay carries text only); kept so the next phone gets it at once
+  const thumbs = new Map();
+  async function thumb(src) {
+    if (!src) return { ok: false };
+    if (thumbs.has(src)) return { ok: true, d: thumbs.get(src) };
+    try {
+      let buf;
+      if (/^data:image\//i.test(src)) { const m = /^data:[^;,]+(;base64)?,(.*)$/s.exec(src); buf = m[1] ? Buffer.from(m[2], 'base64') : Buffer.from(decodeURIComponent(m[2])); }
+      else if (/^https?:\/\//i.test(src)) { const r = await net.fetch(src); if (!r.ok) throw new Error('http ' + r.status); buf = Buffer.from(await r.arrayBuffer()); }
+      else { let p = src; if (/^file:/i.test(p)) p = decodeURIComponent(p.replace(/^file:\/*/i, '')).replace(/\//g, '\\'); else if (!path.isAbsolute(p)) p = path.join(__dirname, p.replace(/^\.?[\\/]/, '')); buf = fs.readFileSync(p); }
+      const { nativeImage } = require('electron');
+      let im = nativeImage.createFromBuffer(buf);
+      if (im.isEmpty()) return { ok: false };
+      const sz = im.getSize(); if (sz.width > 240) im = im.resize({ width: 240, quality: 'good' });
+      const d = 'data:image/jpeg;base64,' + im.toJPEG(72).toString('base64');
+      if (thumbs.size > 500) thumbs.clear();
+      thumbs.set(src, d);
+      return { ok: true, d };
+    } catch (e) { return { ok: false }; }
+  }
   ipcMain.handle('remote:net', (_e, on) => { cfg.net = !!on; saveCfg(); return info(); });
   // a note on the phone when a download finishes: the free ntfy app, following a secret topic only this PC knows
   ipcMain.handle('remote:ntfy', (_e, on) => { if (on && !cfg.ntfy) cfg.ntfy = 'sb-' + crypto.randomBytes(10).toString('hex'); cfg.ntfyOn = !!on; saveCfg(); if (on) notifyPhone('🔔 Silver Bullet', 'التنبيهات شغّالة: بيوصلك هنا لما يخلص أي تحميل'); return info(); });
@@ -211,6 +231,13 @@ function lang(l){L=T[l]||T.ar;document.documentElement.lang=l;document.documentE
 const esc=(s)=>String(s??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hue=(s)=>[...String(s)].reduce((a,c)=>(a*31+c.charCodeAt(0))%360,7);
 const img=(p,w)=>RELAY?(w||''):(p?'/img/'+p+'?k='+K:'');
+/* from anywhere, pictures kept on the PC come through the relay as small thumbnails (and stand in for web pictures that fail) */
+const pimg=(p,w)=>{if(!RELAY)return p?'<img loading="lazy" src="/img/'+p+'?k='+K+'" onerror="this.remove()">':'';if(w)return '<img loading="lazy" src="'+esc(w)+'"'+(p?' data-fb="'+p+'"':'')+' onerror="rpFail(this)">';return p?'<img data-rp="'+p+'" alt="">':'';};
+const RC={};function rpLoad(el){const id=el.dataset.rp;if(!id)return;el.removeAttribute('data-rp');if(RC[id]){el.src=RC[id];return}call('img',{id}).then((r)=>{if(r&&r.d){RC[id]=r.d;el.src=r.d}else el.remove()}).catch(()=>el.remove())}
+const rpObs=('IntersectionObserver' in window)?new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting){rpObs.unobserve(e.target);rpLoad(e.target)}}),{rootMargin:'400px'}):null;
+let rpT=0;function rpScan(){clearTimeout(rpT);rpT=setTimeout(()=>document.querySelectorAll('img[data-rp]').forEach((el)=>rpObs?rpObs.observe(el):rpLoad(el)),50)}
+function rpFail(el){const f=el.dataset.fb;if(f){el.removeAttribute('data-fb');el.removeAttribute('onerror');el.removeAttribute('src');el.dataset.rp=f;rpScan()}else el.remove()}
+if(RELAY)new MutationObserver(rpScan).observe(document.documentElement,{childList:true,subtree:true});
 const clock=(s)=>{s=Math.floor(s||0);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s%60).padStart(2,'0')};
 const toast=(m)=>{const e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(e._h);e._h=setTimeout(()=>e.classList.remove('show'),2200)};
 // on your Wi-Fi the page talks to the PC directly; from anywhere else it goes through a free relay (the app on the PC answers)
@@ -226,7 +253,7 @@ function call(kind,body){if(!RELAY)return kind==='state'?fetch('/api/state?k='+K
 const cmd=(o)=>call('cmd',o).catch(()=>({ok:false}));
 document.querySelectorAll('.tabs button').forEach((b)=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach((x)=>x.classList.toggle('on',x===b));for(const s of ['games','watch','dl','shots','pc'])$('#'+s).hidden=s!==b.dataset.t;try{localStorage.setItem('sbtab',b.dataset.t)}catch{}});
 document.querySelectorAll('[data-g]').forEach((b)=>b.onclick=()=>{gt=b.dataset.g;document.querySelectorAll('[data-g]').forEach((x)=>x.classList.toggle('on',x===b));drawGames();});
-const tile=(g,extra)=>'<button class="g" style="--h:'+hue(g.name)+'" data-id="'+esc(g.id)+'" data-kind="'+(g.tor?'tor':'game')+'"><span class="ini">'+esc((g.name||'?')[0])+'</span>'+(img(g.pic,g.web)?'<img loading="lazy" src="'+img(g.pic,g.web)+'" onerror="this.remove()">':'')+(extra?'<em>'+extra+'</em>':'')+'<span>'+esc(g.name)+'</span></button>';
+const tile=(g,extra)=>'<button class="g" style="--h:'+hue(g.name)+'" data-id="'+esc(g.id)+'" data-kind="'+(g.tor?'tor':'game')+'"><span class="ini">'+esc((g.name||'?')[0])+'</span>'+pimg(g.pic,g.web)+(extra?'<em>'+extra+'</em>':'')+'<span>'+esc(g.name)+'</span></button>';
 function drawGames(){const q=$('#q').value.trim().toLowerCase();const list=(gt==='inst'?S.games:S.lib).filter((g)=>!q||g.name.toLowerCase().includes(q));
 $('#grid').innerHTML=list.map((g)=>tile(g,g.tor?(g.state==='downloading'?Math.round(g.pct||0)+'%':g.state==='saved'?'🧲':''):g.owned?'📚':'')).join('')||'<p class="hint">'+t('none')+'</p>';
 document.querySelectorAll('#grid .g').forEach((b)=>b.onclick=async()=>{b.classList.add('go');const r=await cmd(b.dataset.kind==='tor'?{type:'torDl',id:b.dataset.id}:{type:'launch',id:b.dataset.id});toast(r.ok?(b.dataset.kind==='tor'?t('dlstart'):'▶ '+t('onpc')):t('fail'));setTimeout(()=>b.classList.remove('go'),1500)});}
@@ -237,7 +264,7 @@ $('#wst').innerHTML='';$('#wsh').innerHTML='<div class="row" style="align-items:
 $('#wb').onclick=()=>{openShow=null;drawWatch()};
 document.querySelectorAll('[data-pc]').forEach((b)=>b.onclick=async()=>{const r=await cmd({type:'showPlay',ep:b.dataset.pc});toast(r.ok?'▶ '+t('onpc'):t('fail'))});
 document.querySelectorAll('[data-here]').forEach((b)=>b.onclick=()=>playHere(sh,sh.eps.find((e)=>e.id===b.dataset.here)));return;}
- $('#wsh').innerHTML=S.shows.length?'<h3>'+t('shows')+'</h3><div class="grid">'+S.shows.map((sh)=>'<button class="g" style="--h:'+hue(sh.name)+'" data-show="'+sh.dir+'"><span class="ini">'+esc(sh.name[0])+'</span>'+(img(sh.pic,sh.web)?'<img loading="lazy" src="'+img(sh.pic,sh.web)+'" onerror="this.remove()">':'')+'<em>'+sh.eps.filter((e)=>e.d&&e.t/e.d>.9).length+'/'+sh.eps.length+'</em><span>'+esc(sh.name)+'</span></button>').join('')+'</div>':'';
+ $('#wsh').innerHTML=S.shows.length?'<h3>'+t('shows')+'</h3><div class="grid">'+S.shows.map((sh)=>'<button class="g" style="--h:'+hue(sh.name)+'" data-show="'+sh.dir+'"><span class="ini">'+esc(sh.name[0])+'</span>'+pimg(sh.pic,sh.web)+'<em>'+sh.eps.filter((e)=>e.d&&e.t/e.d>.9).length+'/'+sh.eps.length+'</em><span>'+esc(sh.name)+'</span></button>').join('')+'</div>':'';
  document.querySelectorAll('[data-show]').forEach((b)=>b.onclick=()=>{openShow=b.dataset.show;drawWatch();scrollTo(0,0)});
  const wRow=(w)=>'<div class="it">'+(img(w.pic,w.web)?'<img src="'+img(w.pic,w.web)+'" onerror="this.replaceWith(Object.assign(document.createElement(\\'span\\'),{className:\\'ph\\',textContent:\\'🎬\\'}))">':'<span class="ph">🎬</span>')+'<div><b>'+esc(w.name)+'</b><small>'+esc([w.note,w.time?'⏱ '+clock(w.time):''].filter(Boolean).join(' • '))+'</small></div><div class="row"><button class="btn gh" data-fav="'+esc(w.id)+'" title="'+esc(t('favt'))+'">'+(w.fav?'⭐':'☆')+'</button>'+(ytId(w.url)?'<button class="btn gh" data-yt="'+esc(w.id)+'">'+t('here')+'</button>':'')+(w.url?'<a class="btn gh" data-site="'+esc(w.id)+'" target="_blank" rel="noopener" href="'+esc(ytAt(w.url,w.time))+'">🌐</a>':'')+(w.url&&!ytId(w.url)?'<button class="btn gh" data-pin="'+esc(w.id)+'" title="'+esc(t('pin'))+'">📍</button>':'')+'<button class="btn" data-w="'+esc(w.id)+'">🖥</button></div></div>';
  const favs=S.watch.filter((w)=>w.fav),rest=S.watch.filter((w)=>!w.fav);
