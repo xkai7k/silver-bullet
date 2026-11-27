@@ -1108,6 +1108,33 @@ ipcMain.handle('series:scan', (_e, folders) => {
   return shows.sort((a, b) => natural(a.name, b.name));
 });
 
+// Videos you downloaded, without picking a folder: Downloads, Videos and the app's own download folder.
+// A folder of videos there is a show; a single video is a movie / clip. Newest first.
+ipcMain.handle('videos:local', (_e, skip) => {
+  const home = require('os').homedir();
+  const torOut = path.join(app.getPath('downloads'), 'Silver Bullet Torrents');
+  const roots = [app.getPath('downloads'), app.getPath('videos'), path.join(home, 'OneDrive', 'Videos'), torOut].filter((d, i, a) => d && fs.existsSync(d) && a.indexOf(d) === i);
+  const skipSet = new Set([...(skip || []), torOut].map((d) => path.resolve(d).toLowerCase())); // the torrent folder is read as its own shelf, not one big "show"
+  const out = [];
+  for (const root of roots) {
+    let ents = []; try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
+    for (const e of ents) {
+      const d = path.join(root, e.name);
+      if (skipSet.has(path.resolve(d).toLowerCase())) continue;
+      try {
+        if (e.isDirectory()) {
+          const eps = videosIn(d).filter((v) => v.size > 1 << 20).sort((a, b) => natural(a.file, b.file));
+          if (eps.length) out.push({ name: e.name, dir: d, poster: posterIn(d), episodes: eps, at: Math.max(...eps.map((v) => { try { return fs.statSync(v.file).mtimeMs; } catch { return 0; } })) });
+        } else if (e.isFile() && VIDEO_EXT.test(e.name) && !/sample/i.test(e.name)) {
+          const st = fs.statSync(d); if (st.size < 1 << 20) continue;
+          out.push({ name: e.name.replace(VIDEO_EXT, ''), dir: d, poster: '', episodes: [{ file: d, name: e.name, size: st.size }], movie: true, at: st.mtimeMs });
+        }
+      } catch {}
+    }
+  }
+  return out.sort((a, b) => b.at - a.at).slice(0, 60);
+});
+
 // ---------- Screenshots & clips per game ----------
 const IMG_RE = /\.(png|jpe?g|webp|bmp)$/i, VID_RE = /\.(mp4|mkv|webm|mov)$/i;
 const normName = (s) => String(s || '').toLowerCase().replace(/[™®©]/g, '').replace(/[^a-z0-9؀-ۿ]/g, '');

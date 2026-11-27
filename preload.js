@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld('api', {
   phoneNote: (t, m) => ipcRenderer.invoke('phone:note', t, m),
   dealsGet: (refresh) => ipcRenderer.invoke('deals:get', refresh),
   steamInstalled: () => ipcRenderer.invoke('steam:installed'),
+  videosLocal: (skip) => ipcRenderer.invoke('videos:local', skip),
   onSteamInstalled: (cb) => ipcRenderer.on('steam:installed', (_e, ids) => cb(ids)),
   dealsSearch: (q) => ipcRenderer.invoke('deals:search', q),
   dealsWish: (g, on) => ipcRenderer.invoke('deals:wish', g, on),

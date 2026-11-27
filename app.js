@@ -3089,7 +3089,14 @@ async function pushRemote() {
   ];
   const w = page('watch');
   const watch = (w?.items || []).map((i) => ({ id: i.id, name: i.name, img: pic(i), url: isWeb(i.lastUrl || i.target) ? (i.lastUrl || i.target) : '', note: i.lastNote || '', time: i.lastTime || 0, fav: !!i.fav }));
-  if (window.Series && Date.now() - remoteShowsAt > 10 * 60000 && w?.folders?.length && !window.SB_PAUSED?.()) { remoteShowsAt = Date.now(); try { remoteShows = await Series.scanAll(); } catch { remoteShows = []; } }
+  if (window.Series && Date.now() - remoteShowsAt > 10 * 60000 && !window.SB_PAUSED?.()) {
+    remoteShowsAt = Date.now();
+    let mine = []; try { mine = w?.folders?.length ? await Series.scanAll() : []; } catch {}
+    // plus what you downloaded (Downloads, Videos, the torrent folder), even without adding a folder
+    let local = []; try { local = (await pv.videosLocal?.([...(w?.folders || []), ...mine.map((x) => x.dir)])) || []; } catch {}
+    const seen = new Set(mine.map((x) => x.dir.toLowerCase()));
+    remoteShows = [...mine, ...local.filter((x) => !seen.has(x.dir.toLowerCase()))];
+  }
   const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
   // only real downloads: running now (the downloader saw it in the last 2 minutes), or finished/failed in the last day, and not cleared
   const torrents = (data.torLib || []).filter((t) => !t.cleared && (t.state === 'downloading' ? Date.now() - (t.seenAt || 0) < 120000 : (t.state === 'done' || t.state === 'dead') && Date.now() - (t.doneAt || t.seenAt || 0) < 864e5)).slice(0, 20).map((t) => ({ id: t.id, title: t.title, state: t.state, pct: t.pct, paused: !!t.paused }));
