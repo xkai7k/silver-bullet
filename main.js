@@ -1850,31 +1850,35 @@ async function steamRemoteInstall(appid, name) {
   clearTimeout(steamQueueT); steamQueueT = setTimeout(() => restartSteam(root).catch((e) => log('steam restart failed', e.message)), 6000);
   return { ok: true, msg: `⬇ ${name}: ستيم بيعيد تشغيل نفسه ويبدأ التحميل خلال دقيقة` };
 }
+const steamRunning = () => new Promise((r) => execFile('tasklist', ['/FI', 'IMAGENAME eq steam.exe', '/NH'], { windowsHide: true }, (_e, out) => r(/steam\.exe/i.test(out || ''))));
+async function steamStop(root) {
+  if (!(await steamRunning())) return;
+  execFile(path.join(root, 'steam.exe'), ['-shutdown'], { windowsHide: true }, () => {});
+  for (let i = 0; i < 40 && await steamRunning(); i++) await new Promise((r) => setTimeout(r, 1000));
+  if (await steamRunning()) execFile('taskkill', ['/IM', 'steam.exe', '/F'], { windowsHide: true }, () => {});
+  await new Promise((r) => setTimeout(r, 2500));
+}
+const steamStart = (root) => spawn(path.join(root, 'steam.exe'), ['-silent'], { detached: true, stdio: 'ignore', cwd: root }).unref();
 async function restartSteam(root) {
   const names = [...steamQueue.values()]; steamQueue.clear();
-  const exe = path.join(root, 'steam.exe');
-  const running = () => new Promise((r) => execFile('tasklist', ['/FI', 'IMAGENAME eq steam.exe', '/NH'], { windowsHide: true }, (_e, out) => r(/steam\.exe/i.test(out || ''))));
-  if (await running()) {
-    execFile(exe, ['-shutdown'], { windowsHide: true }, () => {});
-    for (let i = 0; i < 40 && await running(); i++) await new Promise((r) => setTimeout(r, 1000));
-    if (await running()) execFile('taskkill', ['/IM', 'steam.exe', '/F'], { windowsHide: true }, () => {});
-    await new Promise((r) => setTimeout(r, 2500));
-  }
-  spawn(exe, ['-silent'], { detached: true, stdio: 'ignore', cwd: root }).unref();
+  steamPaused = false;
+  await steamStop(root);
+  steamStart(root);
   log('steam restarted for', names.join(', '));
   try { remoteApi?.notifyPhone?.('⬇ ستيم بدأ يحمّل', names.join('، ')); } catch {}
 }
 
 // What Steam is downloading right now (read from its own app manifests, which it updates as it goes)
 const steamTracked = new Map(); // appid -> { name, doneAt }
+let steamPaused = false; // Steam closed from the phone to hold its downloads
 let steamDlList = [], steamRootCached = null;
 steamRoot().then((r) => { steamRootCached = r; });
 function steamDlScan() {
-  const root = steamRootCached; if (!root) return;
+  const root = steamRootCached; if (!root || steamPaused) return;
   const libs = new Set([root]);
   const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
   if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
-  const out = [];
+  const out = [], installed = [];
   for (const l of libs) {
     let files = []; try { files = fs.readdirSync(path.join(l, 'steamapps')).filter((f) => /^appmanifest_\d+\.acf$/i.test(f)); } catch { continue; }
     for (const f of files) {
@@ -1883,6 +1887,7 @@ function steamDlScan() {
       const total = Number(getCI(a, 'BytesToDownload') || 0), done = Number(getCI(a, 'BytesDownloaded') || 0);
       const tr = steamTracked.get(id);
       if (flags === 4) { // fully installed
+        installed.push(id);
         if (tr && !tr.doneAt) { tr.doneAt = Date.now(); log('steam download done', tr.name); try { remoteApi?.notifyPhone?.('✅ خلص التحميل', tr.name); } catch {} }
         if (tr && Date.now() - tr.doneAt < 30 * 60e3) out.push({ id, name: tr.name, st: 'done', pct: 100, done: total, total });
         continue;
@@ -1893,7 +1898,45 @@ function steamDlScan() {
     }
   }
   steamDlList = out;
+  const sig = installed.sort().join(',');
+  if (sig !== steamDlScan.sig) { steamDlScan.sig = sig; try { mainWin?.webContents.send('steam:installed', installed); } catch {} } // the app moves them out of "مكتبتي"
 }
+// Pause = close Steam (all its downloads wait), resume = open it again (it carries on by itself).
+// Cancel = Steam closed, the game taken off its list with whatever was half downloaded, Steam opened again.
+async function steamAct(appid, act) {
+  const root = steamRootCached || await steamRoot(); if (!root) return { ok: false, msg: 'ستيم مو مثبت' };
+  if ((act === 'pause' || act === 'cancel') && (frontGame() || gamesRunning > 0)) return { ok: false, msg: 'فيه لعبة شغّالة، سكّرها أول' };
+  log('phone steam', act, appid || '');
+  if (act === 'pause') {
+    await steamStop(root); steamPaused = true; steamDlList = steamDlList.map((x) => (x.st === 'done' ? x : { ...x, st: 'paused' }));
+    return { ok: true, msg: '⏸ وقّفت تحميلات ستيم' };
+  }
+  if (act === 'resume') { steamPaused = false; steamStart(root); setTimeout(() => { try { steamDlScan(); } catch {} }, 20000); return { ok: true, msg: '▶ ستيم يكمّل التحميل' }; }
+  if (act === 'cancel') {
+    appid = String(appid || ''); if (!/^\d+$/.test(appid)) return { ok: false };
+    const wasPaused = steamPaused;
+    await steamStop(root);
+    const libs = new Set([root]);
+    const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
+    if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
+    const name = steamTracked.get(appid)?.name || appid;
+    for (const l of libs) {
+      const man = path.join(l, 'steamapps', `appmanifest_${appid}.acf`); if (!fs.existsSync(man)) continue;
+      const a = getCI(parseVdf(readText(man) || ''), 'AppState') || {};
+      if (Number(getCI(a, 'StateFlags') || 0) === 4) return (wasPaused || steamStart(root), { ok: false, msg: 'هذي اللعبة خلصت وتثبّتت' });
+      try { fs.unlinkSync(man); } catch {}
+      try { fs.rmSync(path.join(l, 'steamapps', 'downloading', appid), { recursive: true, force: true }); } catch {}
+      const dir = getCI(a, 'installdir');
+      if (dir && steamTracked.has(appid)) try { fs.rmSync(path.join(l, 'steamapps', 'common', dir), { recursive: true, force: true }); } catch {} // only a folder we started from the phone
+    }
+    steamTracked.delete(appid); steamDlList = steamDlList.filter((x) => x.id !== appid);
+    if (!wasPaused) { steamPaused = false; steamStart(root); }
+    log('steam download cancelled', name);
+    return { ok: true, msg: '✕ لغيت تحميل ' + name };
+  }
+  return { ok: false };
+}
+ipcMain.handle('steam:installed', () => { try { steamDlScan(); } catch {} return (steamDlScan.sig || '').split(',').filter(Boolean); });
 setInterval(() => { if (steamTracked.size || steamDlList.length || remoteApi) { try { steamDlScan(); } catch (e) { log('steam scan', e.message); } } }, 10000);
 
 // where a Steam game is installed (for mods / translations)
@@ -2213,7 +2256,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;

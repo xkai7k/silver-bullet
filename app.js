@@ -799,7 +799,7 @@ function torLibProgress(items) {
   for (const t of data.torLib || []) {
     if (t.state !== 'downloading') continue;
     const x = items.find((i) => i.name === t.name); if (!x) continue;
-    t.seenAt = Date.now();
+    t.seenAt = Date.now(); if (t.gid !== x.gid) { t.gid = x.gid; changed = true; } t.paused = x.status === 'paused';
     const pct = x.total ? Math.floor((x.done / x.total) * 100) : 0;
     if (x.status === 'complete') { t.state = 'done'; t.pct = 100; t.doneAt = Date.now(); changed = true; }
     else if (pct !== t.pct) { t.pct = pct; changed = true; }
@@ -3086,7 +3086,7 @@ async function pushRemote() {
   if (window.Series && Date.now() - remoteShowsAt > 10 * 60000 && w?.folders?.length && !window.SB_PAUSED?.()) { remoteShowsAt = Date.now(); try { remoteShows = await Series.scanAll(); } catch { remoteShows = []; } }
   const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
   // only real downloads: running now (the downloader saw it in the last 2 minutes), or finished/failed in the last day, and not cleared
-  const torrents = (data.torLib || []).filter((t) => !t.cleared && (t.state === 'downloading' ? Date.now() - (t.seenAt || 0) < 120000 : (t.state === 'done' || t.state === 'dead') && Date.now() - (t.doneAt || t.seenAt || 0) < 864e5)).slice(0, 20).map((t) => ({ title: t.title, state: t.state, pct: t.pct }));
+  const torrents = (data.torLib || []).filter((t) => !t.cleared && (t.state === 'downloading' ? Date.now() - (t.seenAt || 0) < 120000 : (t.state === 'done' || t.state === 'dead') && Date.now() - (t.doneAt || t.seenAt || 0) < 864e5)).slice(0, 20).map((t) => ({ id: t.id, title: t.title, state: t.state, pct: t.pct, paused: !!t.paused }));
   const shots = window.Shots?.recent?.(80) || [];
   pv.remoteState({ games, lib, watch, shows, shots, torrents, name: data.user?.name || '', lang: data.settings.lang || 'ar' });
 }
@@ -3096,6 +3096,14 @@ pv.onRemote((c) => {
   if (c.type === 'webProg') { const f = findItem(c.id); if (f && isWeb(c.url)) { const ep = c.url !== f.item.lastUrl; f.item.lastUrl = c.url; if (c.t != null) f.item.lastTime = c.t; else if (ep) delete f.item.lastTime; if (ep) f.item.lastNote = '📱 ' + (c.t != null ? 'من الجوال' : 'حلقة من الجوال'); f.item.lastOpened = Date.now(); save(); clearTimeout(window._wpT); window._wpT = setTimeout(() => { pushRemote(); if (page()?.id === f.page.id) renderPage(); }, 1500); pv.log(`phone: progress ${f.item.name} ${c.t ?? ''}`); } return; }
   if (c.type === 'fav') { const f = findItem(c.id); if (f) { f.item.fav = !!c.on; save(); if (page()?.id === f.page.id) renderPage(); pushRemote(); } return; }
   if (c.type === 'launch') { const f = findItem(c.id); pv.log('phone: open ' + (f ? f.item.name : 'missing ' + c.id)); if (f) { launchItem(f.item); toast(`📱 ${f.item.name} من الجوال`); } }
+  else if (c.type === 'torAct') { // ⏸ / ▶ / ✕ on a torrent from the phone
+    const t = (data.torLib || []).find((x) => x.id === c.id);
+    if (t?.gid) pv.torAct(t.gid, c.act).then(() => {
+      if (c.act === 'remove') { t.state = 'saved'; t.pct = 0; t.paused = false; delete t.gid; } else t.paused = c.act === 'pause';
+      save(); pushRemote(); if (currentPageId === 'games' && gamesTab === 'tor') renderPage();
+      toast(`📱 ${c.act === 'pause' ? '⏸ وقّفت' : c.act === 'resume' ? '▶ كمّلت' : '✕ لغيت'} ${t.title}`);
+    });
+  }
   else if (c.type === 'dlClear') { // "🧹 نظّف الكل" on the phone: finished, failed and stuck ones leave the list (the games stay)
     let n = 0;
     for (const t of data.torLib || []) {
@@ -3117,6 +3125,28 @@ pv.torShareGet().then((d) => { torShareDir = d || ''; }).catch(() => {});
 pv.onTorShare((f) => addToTorLib(f, false, true));
 
 $('#setLang').onchange = () => window.I18n?.set($('#setLang').value);
+
+// ---------- A Steam game from "مكتبتي" that is now installed moves up to the installed games ----------
+function promoteSteam(ids) {
+  if (!data || !Array.isArray(ids)) return;
+  const have = new Set(ids.map(String)); let moved = [];
+  for (const p of data.pages) for (const i of [...p.items]) {
+    const sid = i.owned && /^steam:\/\/install\/(\d+)/.exec(i.target || '')?.[1];
+    if (!sid || !have.has(sid)) continue;
+    const twin = allItems().find((x) => !x.owned && x.target === `steam://rungameid/${sid}`);
+    if (twin) { // the Steam sync already added it: keep one tile, with everything you gave it
+      twin.playtime = (twin.playtime || 0) + (i.playtime || 0); if (i.ratings && !twin.ratings) twin.ratings = i.ratings; if (i.fav) twin.fav = true; if (!twin.image && i.image) twin.image = i.image;
+      p.items.splice(p.items.indexOf(i), 1);
+    } else { i.owned = false; i.target = `steam://rungameid/${sid}`; if (data.seen) delete data.seen[i.id]; } // shows as "جديد"
+    moved.push(i.name);
+  }
+  if (!moved.length) return;
+  save(); render(); pushRemote();
+  pv.log('steam: installed now, moved out of the library: ' + moved.join(', '));
+  toast(`✅ ${moved.join('، ')} صارت مثبتة`);
+}
+pv.onSteamInstalled?.(promoteSteam);
+setTimeout(() => pv.steamInstalled?.().then(promoteSteam).catch(() => {}), 20000);
 
 // ---------- "📊 وقتي": how much you play, and what ----------
 // the last 7 days, per game (games opened from here, plus Steam time as it grows)
