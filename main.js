@@ -1119,7 +1119,8 @@ function isProgramDir(d, depth = 0) {
 ipcMain.handle('videos:local', (_e, skip) => {
   const home = require('os').homedir();
   const torOut = path.join(app.getPath('downloads'), 'Silver Bullet Torrents');
-  const roots = [app.getPath('downloads'), torOut] // only what you downloaded: recordings from NVIDIA / Kairos / Medal (in Videos) are left out.filter((d, i, a) => d && fs.existsSync(d) && a.indexOf(d) === i);
+  // only what you downloaded: recordings from NVIDIA / Kairos / Medal (in Videos) are left out
+  const roots = [app.getPath('downloads'), torOut].filter((d, i, a) => d && fs.existsSync(d) && a.indexOf(d) === i);
   const skipSet = new Set([...(skip || []), torOut].map((d) => path.resolve(d).toLowerCase())); // the torrent folder is read as its own shelf, not one big "show"
   const out = [];
   for (const root of roots) {
