@@ -3110,7 +3110,7 @@ async function pushRemote() {
   const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
   // only real downloads: running now (the downloader saw it in the last 2 minutes), or finished/failed in the last day, and not cleared
   const torrents = (data.torLib || []).filter((t) => !t.cleared && (t.state === 'downloading' ? Date.now() - (t.seenAt || 0) < 120000 : (t.state === 'done' || t.state === 'dead') && Date.now() - (t.doneAt || t.seenAt || 0) < 864e5)).slice(0, 20).map((t) => ({ id: t.id, title: t.title, state: t.state, pct: t.pct, paused: !!t.paused }));
-  const shots = window.Shots?.recent?.(80) || [];
+  const shots = window.Shots?.recent?.(300) || [];
   pv.remoteState({ games, lib, watch, shows, shots, torrents, name: data.user?.name || '', lang: data.settings.lang || 'ar' });
 }
 setInterval(() => { if (!window.SB_PAUSED?.()) pushRemote(); }, 15000); setTimeout(pushRemote, 4000);

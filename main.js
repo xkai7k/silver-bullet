@@ -1183,6 +1183,54 @@ async function phoneRemux(file, out) {
   return true;
 }
 setTimeout(() => ffmpegExe(), 3 * 60000); // fetched quietly ahead of time, so the first clip isn't kept waiting
+// ---------- Clip pictures and lengths (for the phone's 📸) ----------
+// a frame from a couple of seconds in, and how long the clip is; both kept on disk, worked out one clip at a time
+const clipKey = (file) => { try { return require('crypto').createHash('md5').update(file + fs.statSync(file).mtimeMs).digest('hex').slice(0, 16); } catch { return ''; } };
+const clipDir = () => path.join(app.getPath('userData'), 'clip-thumbs');
+const clipMetaFile = () => path.join(app.getPath('userData'), 'clip-meta.json');
+let clipMetaMap = null, clipQueue = [], clipBusy = false;
+function clipMeta(file) {
+  if (!clipMetaMap) { try { clipMetaMap = JSON.parse(fs.readFileSync(clipMetaFile(), 'utf8')); } catch { clipMetaMap = {}; } }
+  const k = clipKey(file); if (!k) return null;
+  if (clipMetaMap[k]) return clipMetaMap[k];
+  if (!clipQueue.includes(file) && clipQueue.length < 500) { clipQueue.push(file); clipWork(); }
+  return null;
+}
+async function clipWork() {
+  if (clipBusy) return; clipBusy = true;
+  try {
+    const ff = await ffmpegExe(); if (!ff) return;
+    let n = 0;
+    while (clipQueue.length) {
+      const file = clipQueue.shift(); const k = clipKey(file); if (!k || clipMetaMap[k]) continue;
+      const err = await new Promise((r) => execFile(ff, ['-hide_banner', '-i', file], { windowsHide: true, timeout: 20000 }, (_e, _o, e2) => r(String(e2 || ''))));
+      const m = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(err);
+      clipMetaMap[k] = { dur: m ? Math.round(+m[1] * 3600 + +m[2] * 60 + +m[3]) : 0 };
+      if (++n % 20 === 0) try { fs.writeFileSync(clipMetaFile(), JSON.stringify(clipMetaMap)); } catch {}
+    }
+    try { fs.writeFileSync(clipMetaFile(), JSON.stringify(clipMetaMap)); } catch {}
+  } finally { clipBusy = false; }
+}
+const framing = new Map();
+async function videoFrame(file) {
+  const k = clipKey(file); if (!k) return null;
+  const dir = clipDir(), out = path.join(dir, k + '.jpg');
+  if (fs.existsSync(out)) return out;
+  if (framing.has(k)) return framing.get(k);
+  const job = (async () => {
+    const ff = await ffmpegExe(); if (!ff) return null;
+    fs.mkdirSync(dir, { recursive: true });
+    const dur = clipMeta(file)?.dur || 0;
+    for (const at of [Math.min(3, dur ? dur / 3 : 3), 0]) {
+      await new Promise((r) => execFile(ff, ['-v', 'error', '-y', '-ss', String(at), '-i', file, '-frames:v', '1', '-vf', 'scale=480:-2', '-q:v', '4', out], { windowsHide: true, timeout: 30000 }, () => r()));
+      if (fs.existsSync(out)) return out;
+    }
+    return null;
+  })().finally(() => framing.delete(k));
+  framing.set(k, job);
+  return job;
+}
+
 // what the phone plays or downloads: the one-track copy (kept for a day), made the first time it's asked for
 const phoneCacheDir = () => path.join(app.getPath('temp'), 'silver-bullet-phone');
 const phoneMaking = new Map();
@@ -2509,7 +2557,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, phoneVersion, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, phoneVersion, clipMeta, videoFrame, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;
