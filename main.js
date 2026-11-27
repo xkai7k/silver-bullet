@@ -1172,12 +1172,33 @@ function ffmpegExe() {
 async function audioTracks(ff, file) {
   return new Promise((r) => execFile(ff, ['-hide_banner', '-i', file], { windowsHide: true, timeout: 20000 }, (_e, _o, err) => r((String(err || '').match(/Stream #\d+:\d+[^\n]*: Audio/g) || []).length)));
 }
+// the sound tracks of a clip with their names (recorders keep game, Discord and mic apart)
+async function audioInfo(ff, file) {
+  const err = await new Promise((r) => execFile(ff, ['-hide_banner', '-i', file], { windowsHide: true, timeout: 20000 }, (_e, _o, e) => r(String(e || ''))));
+  const out = []; const lines = err.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!/Stream #\d+:\d+.*: Audio/.test(lines[i])) continue;
+    let name = ''; for (let j = i + 1; j < lines.length && !/Stream #/.test(lines[j]); j++) { const m = lines[j].match(/^\s*(title|handler_name)\s*:\s*(.+)$/i); if (m && (!name || /title/i.test(m[1]))) name = m[2].trim(); }
+    out.push(name);
+  }
+  return out;
+}
+// how to turn all of a clip's sound tracks into one the phone plays: a ready "Mix" track if there is one,
+// otherwise every track mixed together (so friends' voices on Discord and the mic aren't lost)
+async function soundArgs(ff, file, extra) {
+  const names = await audioInfo(ff, file);
+  if (names.length <= 1) return { map: ['-map', '0:a:0?'], af: extra };
+  const mixI = names.findIndex((n) => /\b(mix|mixed|master|all)\b/i.test(n));
+  if (mixI >= 0) return { map: ['-map', '0:a:' + mixI], af: extra };
+  return { map: [], fc: names.map((_n, i) => '[0:a:' + i + ']').join('') + 'amix=inputs=' + names.length + ':duration=longest:normalize=0,alimiter=limit=0.95' + (extra ? ',' + extra : '') + '[aout]' };
+}
 // makes `out` a phone-friendly copy of `file` when it needs one; false = the original is fine as it is
 async function phoneRemux(file, out) {
   if (!VIDEO_EXT.test(file)) return false;
   const ff = await ffmpegExe(); if (!ff) return false;
   if ((await audioTracks(ff, file)) < 2) return false;
-  const ok = await new Promise((r) => execFile(ff, ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-map', '0:a:0', '-c', 'copy', '-movflags', '+faststart', out], { windowsHide: true, timeout: 30 * 60000 }, (e) => r(!e)));
+  const snd = await soundArgs(ff, file, '');
+  const ok = await new Promise((r) => execFile(ff, ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', ...(snd.fc ? ['-filter_complex', snd.fc, '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k'] : [...snd.map, '-c', 'copy']), '-movflags', '+faststart', out], { windowsHide: true, timeout: 30 * 60000 }, (e) => r(!e)));
   if (!ok) { try { fs.unlinkSync(out); } catch {} log('phone copy failed', path.basename(file)); return false; }
   log('phone copy: one sound track', path.basename(file));
   return true;
@@ -1239,7 +1260,7 @@ async function phoneVersion(file) {
     const st = fs.statSync(file); if (!VIDEO_EXT.test(file) || st.size > 6 * 1024 ** 3) return file;
     const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
     for (const f of fs.readdirSync(dir)) { try { const p = path.join(dir, f); if (Date.now() - fs.statSync(p).mtimeMs > 864e5) fs.unlinkSync(p); } catch {} }
-    const key = require('crypto').createHash('md5').update(file + st.mtimeMs).digest('hex').slice(0, 16);
+    const key = require('crypto').createHash('md5').update('v2' + file + st.mtimeMs).digest('hex').slice(0, 16);
     const out = path.join(dir, key + '.mp4'), plain = out + '.plain';
     if (fs.existsSync(out)) return out;
     if (fs.existsSync(plain)) return file;
@@ -1255,12 +1276,13 @@ async function phoneSmall(file) {
   try {
     const st = fs.statSync(file); if (!VIDEO_EXT.test(file)) return file;
     const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
-    const key = require('crypto').createHash('md5').update('small' + file + st.mtimeMs).digest('hex').slice(0, 16);
+    const key = require('crypto').createHash('md5').update('small2' + file + st.mtimeMs).digest('hex').slice(0, 16);
     const out = path.join(dir, key + '.mp4');
     if (fs.existsSync(out)) return out;
     if (!smallMaking.has(key)) smallMaking.set(key, (async () => {
       const ff = await ffmpegExe(); if (!ff) return false;
-      const base = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', 'scale=-2:min(720\\,ih)', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart'];
+      const snd = await soundArgs(ff, file, '');
+      const base = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', ...(snd.fc ? ['-filter_complex', snd.fc, '-map', '[aout]'] : snd.map), '-vf', 'scale=-2:min(720\\,ih)', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart'];
       const tryEnc = (v) => new Promise((r) => execFile(ff, [...base, ...v, out], { windowsHide: true, timeout: 20 * 60000 }, (e) => r(!e && fs.existsSync(out))));
       const ok = await tryEnc(['-c:v', 'h264_nvenc', '-preset', 'p4', '-b:v', '2800k', '-maxrate', '4M', '-bufsize', '8M']) || await tryEnc(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26']);
       if (ok) log('phone small copy', path.basename(file), Math.round(st.size / 1048576) + 'MB ->', Math.round(fs.statSync(out).size / 1048576) + 'MB');
@@ -1279,14 +1301,15 @@ async function phoneClip(file, small) {
   try {
     const st = fs.statSync(file); if (!VIDEO_EXT.test(file) || st.size > 4 * 1024 ** 3) return file;
     const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
-    const key = require('crypto').createHash('md5').update('steady3' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
+    const key = require('crypto').createHash('md5').update('steady4' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
     const out = path.join(dir, key + '.mp4');
     if (fs.existsSync(out)) return out;
     if (!steadyMaking.has(key)) steadyMaking.set(key, (async () => {
       const ff = await ffmpegExe(); if (!ff) return false;
       const vf = (small ? 'scale=-2:min(720\\,ih),' : '') + 'fps=' + (small ? 30 : 60) + ',format=yuv420p';
-      const base = ['-v', 'error', '-y', '-fflags', '+genpts+discardcorrupt', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', vf,
-        '-af', 'aresample=async=1000:first_pts=0', '-c:a', 'aac', '-b:a', small ? '128k' : '192k', '-ar', '48000', '-ac', '2',
+      const snd = await soundArgs(ff, file, 'aresample=async=1000:first_pts=0');
+      const base = ['-v', 'error', '-y', '-fflags', '+genpts+discardcorrupt', '-i', file, '-map', '0:v:0', ...(snd.fc ? ['-filter_complex', snd.fc, '-map', '[aout]'] : [...snd.map, '-af', snd.af]), '-vf', vf,
+        '-c:a', 'aac', '-b:a', small ? '128k' : '192k', '-ar', '48000', '-ac', '2',
         '-fps_mode', 'cfr', '-g', small ? '60' : '120', '-profile:v', 'high', '-tag:v', 'avc1', ...(small ? ['-level:v', '4.1'] : []), '-brand', 'mp42', '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero'];
       const tryEnc = (v) => new Promise((r) => execFile(ff, [...base, ...v, out], { windowsHide: true, timeout: 30 * 60000 }, (e) => r(!e && fs.existsSync(out) && fs.statSync(out).size > 1000)));
       const ok = await tryEnc(small ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-b:v', '3M', '-maxrate', '4500k', '-bufsize', '9M']
