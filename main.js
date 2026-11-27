@@ -1867,6 +1867,43 @@ async function pcAction(act) {
   if (act === 'sleep') { setTimeout(() => run('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.Application]::SetSuspendState([System.Windows.Forms.PowerState]::Suspend, $false, $false)']), 3000); return { ok: true, msg: '😴 بيدخل سكون' }; }
   if (act === 'shutdown') { const ok = await run('shutdown', ['/s', '/t', '30', '/c', 'Silver Bullet: shutting down from your phone']); if (ok) shutAt = Date.now() + 30000; return { ok, msg: ok ? '⏻ بينطفي بعد ٣٠ ثانية' : 'ما قدرت أطفيه' }; }
   if (act === 'cancel') { const ok = await run('shutdown', ['/a']); shutAt = 0; return { ok: true, msg: ok ? '↩ ألغيت الإطفاء' : 'ما كان فيه إطفاء' }; }
+  if (act === 'closeall') {
+    // every window that shows on the taskbar gets a normal "close" (like pressing ✕), so apps can still ask to save;
+    // Silver Bullet itself, the Claude app (it's what links the PC to Claude), Explorer's desktop/taskbar and overlays without a taskbar button are left alone
+    const me = path.basename(process.execPath, '.exe').replace(/'/g, '');
+    const ps = `Add-Type @'
+using System; using System.Text; using System.Runtime.InteropServices; using System.Collections.Generic;
+public class SBWins {
+  delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint c);
+  [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+  [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int s);
+  public static List<string> Close(string[] skip) {
+    var done = new List<string>(); var skipSet = new HashSet<string>(skip, StringComparer.OrdinalIgnoreCase);
+    EnumWindows((h, l) => {
+      if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero || GetWindowTextLength(h) == 0) return true;
+      int ex = GetWindowLong(h, -20); if ((ex & 0x80) != 0 && (ex & 0x40000) == 0) return true;
+      int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
+      uint pid; GetWindowThreadProcessId(h, out pid); string n = "";
+      try { n = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch {}
+      if (skipSet.Contains(n)) return true;
+      PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero); done.Add(n); return true; }, IntPtr.Zero);
+    return done;
+  }
+}
+'@
+$d = [SBWins]::Close(@('${me}','electron','explorer','claude','ShellExperienceHost','StartMenuExperienceHost','SearchHost','TextInputHost','LockApp','sbwake','sbinput','sbwatch','Taskmgr'))
+Write-Output ($d.Count)`;
+    const out = await new Promise((r) => execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 20000 }, (e, o) => r(e ? '' : String(o || '').trim())));
+    const n = parseInt(out, 10);
+    if (isNaN(n)) return { ok: false, msg: 'ما قدرت' };
+    return { ok: true, msg: n ? '🧹 سكّرت ' + n + ' نوافذ' : 'ما فيه نوافذ مفتوحة' };
+  }
   if (act === 'kill') {
     const name = frontGame(); if (!name) return { ok: false, msg: 'ما فيه لعبة شغّالة' };
     const ok = await run('taskkill', ['/IM', name, '/T', '/F']);
