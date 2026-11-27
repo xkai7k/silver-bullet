@@ -1279,7 +1279,7 @@ async function phoneClip(file, small) {
   try {
     const st = fs.statSync(file); if (!VIDEO_EXT.test(file) || st.size > 4 * 1024 ** 3) return file;
     const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
-    const key = require('crypto').createHash('md5').update('steady2' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
+    const key = require('crypto').createHash('md5').update('steady3' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
     const out = path.join(dir, key + '.mp4');
     if (fs.existsSync(out)) return out;
     if (!steadyMaking.has(key)) steadyMaking.set(key, (async () => {
@@ -1287,7 +1287,7 @@ async function phoneClip(file, small) {
       const vf = (small ? 'scale=-2:min(720\\,ih),' : '') + 'fps=' + (small ? 30 : 60) + ',format=yuv420p';
       const base = ['-v', 'error', '-y', '-fflags', '+genpts+discardcorrupt', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-vf', vf,
         '-af', 'aresample=async=1000:first_pts=0', '-c:a', 'aac', '-b:a', small ? '128k' : '192k', '-ar', '48000', '-ac', '2',
-        '-fps_mode', 'cfr', '-g', small ? '60' : '120', '-profile:v', 'high', '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero'];
+        '-fps_mode', 'cfr', '-g', small ? '60' : '120', '-profile:v', 'high', '-tag:v', 'avc1', ...(small ? ['-level:v', '4.1'] : []), '-brand', 'mp42', '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero'];
       const tryEnc = (v) => new Promise((r) => execFile(ff, [...base, ...v, out], { windowsHide: true, timeout: 30 * 60000 }, (e) => r(!e && fs.existsSync(out) && fs.statSync(out).size > 1000)));
       const ok = await tryEnc(small ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-b:v', '3M', '-maxrate', '4500k', '-bufsize', '9M']
                                     : ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '21', '-b:v', '0', '-maxrate', '25M', '-bufsize', '50M'])
