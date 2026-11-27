@@ -1280,7 +1280,10 @@ ipcMain.handle('shots:scan', async (_e, games) => {
   const folderRoots = [
     [videos, 'NVIDIA'], [path.join(videos, 'NVIDIA'), 'NVIDIA'], [path.join(videos, 'Medal'), 'Medal'], [path.join(videos, 'Medal', 'Clips'), 'Medal'],
     [path.join(pictures, 'Medal'), 'Medal'], [shotsRoot(), 'Preview'], [path.join(pictures, 'Screenshots'), 'Windows'],
+    [path.join(videos, 'Kairos'), 'Kairos'], [path.join(videos, 'Wand'), 'Wand'], [path.join(videos, 'SteelSeries Moments', 'Exported Clips'), 'SteelSeries'],
   ];
+  // Razer Cortex keeps its clips per account: GameClips/<account>/Videos/<Game>
+  try { const rz = path.join(process.env.LOCALAPPDATA || '', 'Razer', 'Razer Cortex', 'GameClips'); for (const u of fs.readdirSync(rz)) folderRoots.push([path.join(rz, u, 'Videos'), 'Razer']); } catch {}
   for (const [root, src] of folderRoots) {
     let ents = []; try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
     for (const d of ents) {
@@ -1738,7 +1741,7 @@ async function pcAction(act) {
   if (act === 'lock') return { ok: await run('rundll32.exe', ['user32.dll,LockWorkStation']), msg: '🔒 قفلت الشاشة' };
   if (act === 'monoff' || act === 'monon') { const p = await inputHelper(); if (!p) return { ok: false, msg: 'ما قدرت' }; try { p.stdin.write(act + '\n'); } catch { return { ok: false }; } return { ok: true, msg: act === 'monoff' ? '🌑 طفيت الشاشة' : '💡 شغّلت الشاشة' }; }
   if (act === 'sleep') { setTimeout(() => run('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.Application]::SetSuspendState([System.Windows.Forms.PowerState]::Suspend, $false, $false)']), 3000); return { ok: true, msg: '😴 بيدخل سكون' }; }
-  if (act === 'shutdown') { const ok = await run('shutdown', ['/s', '/t', '60', '/c', 'Silver Bullet: shutting down from your phone']); if (ok) shutAt = Date.now() + 60000; return { ok, msg: ok ? '⏻ بينطفي بعد دقيقة' : 'ما قدرت أطفيه' }; }
+  if (act === 'shutdown') { const ok = await run('shutdown', ['/s', '/t', '30', '/c', 'Silver Bullet: shutting down from your phone']); if (ok) shutAt = Date.now() + 30000; return { ok, msg: ok ? '⏻ بينطفي بعد ٣٠ ثانية' : 'ما قدرت أطفيه' }; }
   if (act === 'cancel') { const ok = await run('shutdown', ['/a']); shutAt = 0; return { ok: true, msg: ok ? '↩ ألغيت الإطفاء' : 'ما كان فيه إطفاء' }; }
   if (act === 'kill') {
     const name = frontGame(); if (!name) return { ok: false, msg: 'ما فيه لعبة شغّالة' };
@@ -2037,10 +2040,12 @@ function steamRoot() {
 // Steam's list as "needs downloading" (an app manifest, the same file Steam writes itself) and Steam is
 // restarted quietly, so it starts downloading on its own. Several taps in a row share one restart.
 const steamQueue = new Map(); let steamQueueT = 0;
+// Steam itself says which of its games is running (0 = none)
+const steamGameRunning = () => new Promise((r) => execFile('reg', ['query', 'HKCU\\Software\\Valve\\Steam', '/v', 'RunningAppID'], { windowsHide: true }, (_e, out) => { const m = /RunningAppID\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(out || ''); r(m && parseInt(m[1], 16) > 0 ? parseInt(m[1], 16) : 0); }));
 async function steamRemoteInstall(appid, name) {
   appid = String(appid || ''); if (!/^\d+$/.test(appid)) return { ok: false, msg: 'هذي مو لعبة ستيم' };
-  if (frontGame() || gamesRunning > 0) return { ok: false, msg: 'فيه لعبة شغّالة الحين، سكّرها أول (من تبويب 💻 الجهاز)' };
   const root = await steamRoot(); if (!root) return { ok: false, msg: 'ستيم مو مثبت على الجهاز' };
+  const sg = await steamGameRunning(); if (sg) { log('steam remote install waits: a Steam game is running', sg); return { ok: false, msg: 'فيه لعبة ستيم شغّالة الحين، سكّرها أول (من تبويب 💻 الجهاز)' }; }
   const libs = new SteamLibs([root]);
   const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
   if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p && fs.existsSync(p)) libs.add(p); }
@@ -2091,7 +2096,7 @@ function tellUpdates(list) {
 // update now: Steam closed, the games marked "update first" (its own setting in each game's file), Steam opened again
 async function steamUpdateNow(ids) {
   const root = steamRootCached || await steamRoot(); if (!root) return { ok: false, msg: 'ستيم مو مثبت' };
-  if (frontGame() || gamesRunning > 0) return { ok: false, msg: 'فيه لعبة شغّالة، سكّرها أول' };
+  if (await steamGameRunning()) return { ok: false, msg: 'فيه لعبة ستيم شغّالة، سكّرها أول' };
   const want = new Set((ids && ids.length ? ids : steamUpdates.map((u) => u.id)).map(String));
   if (!want.size) return { ok: true, msg: 'ما فيه تحديثات' };
   await steamStop(root);
@@ -2153,7 +2158,7 @@ function steamDlScan() {
 // Cancel = Steam closed, the game taken off its list with whatever was half downloaded, Steam opened again.
 async function steamAct(appid, act) {
   const root = steamRootCached || await steamRoot(); if (!root) return { ok: false, msg: 'ستيم مو مثبت' };
-  if ((act === 'pause' || act === 'cancel') && (frontGame() || gamesRunning > 0)) return { ok: false, msg: 'فيه لعبة شغّالة، سكّرها أول' };
+  if ((act === 'pause' || act === 'cancel') && await steamGameRunning()) return { ok: false, msg: 'فيه لعبة ستيم شغّالة، سكّرها أول' };
   log('phone steam', act, appid || '');
   if (act === 'pause') {
     await steamStop(root); steamPaused = true; steamDlList = steamDlList.map((x) => (x.st === 'done' ? x : { ...x, st: 'paused' }));
