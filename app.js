@@ -3085,7 +3085,7 @@ async function pushRemote() {
   const games = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store && !notGame(i) && !gone.has(i.id)).slice(0, 400).map((i) => ({ id: i.id, name: i.name, img: pic(i) }));
   const lib = [
     ...(data.torLib || []).filter((t) => t.state !== 'done').map((t) => ({ id: t.id, name: t.title, img: t.image || '', tor: true, state: t.state, pct: t.pct })),
-    ...allItems().filter((i) => isGameItem(i) && i.owned && /^steam:/.test(i.target || '') && !notGame(i)).slice(0, 300).map((i) => ({ id: i.id, name: i.name, img: pic(i), owned: true, sid: /^steam:\/\/(?:install|rungameid)\/(\d+)/.exec(i.target || '')?.[1] || '' })),
+    ...allItems().filter((i) => isGameItem(i) && i.owned && !notGame(i)).slice(0, 300).map((i) => ({ id: i.id, name: i.name, img: pic(i), owned: true, sid: /^steam:\/\/(?:install|rungameid)\/(\d+)/.exec(i.target || '')?.[1] || '' })),
   ];
   const w = page('watch');
   const watch = (w?.items || []).map((i) => ({ id: i.id, name: i.name, img: pic(i), url: isWeb(i.lastUrl || i.target) ? (i.lastUrl || i.target) : '', note: i.lastNote || '', time: i.lastTime || 0, fav: !!i.fav }));
