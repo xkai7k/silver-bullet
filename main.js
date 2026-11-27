@@ -180,6 +180,7 @@ ipcMain.handle('data:save', (_e, data) => {
 });
 
 // ---------- Launching (with play-time tracking for .exe files) ----------
+const runningGames = new Map(); // pid -> the game's .exe (so the phone can close a stuck one)
 let gamesRunning = 0; // games started from here that are still open (the app stays quiet meanwhile)
 function trackSpawn(e, exe, args, itemId) {
   const started = Date.now();
@@ -195,7 +196,9 @@ function trackSpawn(e, exe, args, itemId) {
     ? spawn('cmd.exe', ['/d', '/s', '/c', `"start "" /wait /d ${q(path.dirname(exe))} ${q(exe)} ${args.map(q).join(' ')}"`], { windowsHide: true, windowsVerbatimArguments: true, detached: true, stdio: 'ignore', env })
     : spawn(exe, args, { cwd: path.dirname(exe), detached: true, stdio: 'ignore', env });
   child.on('error', (err) => log('run failed', exe, err.message));
+  const runKey = child.pid || Date.now(); runningGames.set(runKey, exe);
   child.on('exit', (code) => {
+    runningGames.delete(runKey);
     gamesRunning = Math.max(0, gamesRunning - 1);
     const secs = Math.round((Date.now() - started) / 1000);
     log('closed', path.basename(exe), 'after', secs + 's', 'code', code);
@@ -1573,6 +1576,28 @@ ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.handle('update:restart', () => { byeSaid = true; app.relaunch(fs.existsSync(INSTALLED_EXE) ? { execPath: INSTALLED_EXE, args: [] } : undefined); app.exit(0); });
 ipcMain.handle('game:running', () => gamesRunning > 0 || restState.game);
 
+// ---------- The PC from the phone: lock, sleep, shut down (after a minute, can be cancelled), close a stuck game ----------
+let shutAt = 0;
+function frontGame() {
+  const exe = [...runningGames.values()].pop();
+  const name = exe ? path.basename(exe) : (restState.game ? restState.fg : '');
+  return name && !SELF.test(name) && !NOT_GAME.test(name) ? name : '';
+}
+function pcInfo() { return { game: frontGame().replace(/\.exe$/i, ''), shut: shutAt > Date.now() }; }
+async function pcAction(act) {
+  const run = (f, a) => new Promise((r) => execFile(f, a, { windowsHide: true, timeout: 15000 }, (err) => r(!err)));
+  log('phone pc:', act);
+  if (act === 'lock') return { ok: await run('rundll32.exe', ['user32.dll,LockWorkStation']), msg: '🔒 قفلت الشاشة' };
+  if (act === 'sleep') { setTimeout(() => run('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.Application]::SetSuspendState([System.Windows.Forms.PowerState]::Suspend, $false, $false)']), 3000); return { ok: true, msg: '😴 بيدخل سكون' }; }
+  if (act === 'shutdown') { const ok = await run('shutdown', ['/s', '/t', '60', '/c', 'Silver Bullet: shutting down from your phone']); if (ok) shutAt = Date.now() + 60000; return { ok, msg: ok ? '⏻ بينطفي بعد دقيقة' : 'ما قدرت أطفيه' }; }
+  if (act === 'cancel') { const ok = await run('shutdown', ['/a']); shutAt = 0; return { ok: true, msg: ok ? '↩ ألغيت الإطفاء' : 'ما كان فيه إطفاء' }; }
+  if (act === 'kill') {
+    const name = frontGame(); if (!name) return { ok: false, msg: 'ما فيه لعبة شغّالة' };
+    const ok = await run('taskkill', ['/IM', name, '/T', '/F']);
+    return { ok, msg: ok ? '✖ سكّرت ' + name.replace(/\.exe$/i, '') : 'ما قدرت أسكّرها' };
+  }
+  return { ok: false };
+}
 // ---------- Rest ("سكون"): while a game or a full-screen video is in front, the app goes quiet ----------
 // A tiny helper (compiled once on this PC with Windows' own C# compiler, a few KB in memory) tells what is in front.
 // Only Spotify control keeps working; everything else waits, and memory is handed back.
@@ -2098,7 +2123,7 @@ app.whenReady().then(() => {
     tor = require('./torrent').setupTorrents({ ipcMain, app, net, log, download, run, EMU_ROOT, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m), getWin: () => mainWin, importGame: (f, mv) => roms?.importFile(f, mv) });
   } catch (e) { log('torrent setup failed', e.message); }
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;
