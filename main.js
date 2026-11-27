@@ -1142,6 +1142,37 @@ ipcMain.handle('videos:local', (_e, skip) => {
   return out.sort((a, b) => b.at - a.at).slice(0, 60);
 });
 
+// ---------- 📁 Shared with the phone: a folder in OneDrive ----------
+// An episode you send there is uploaded by OneDrive by itself; on the phone the OneDrive app has it
+// (download it there and watch without internet). Whatever you drop in from the phone comes down to the PC.
+const sharedDir = () => { const od = process.env.OneDrive || path.join(require('os').homedir(), 'OneDrive'); return path.join(fs.existsSync(od) ? od : app.getPath('documents'), 'Silver Bullet Shared'); };
+const sharingNow = new Set();
+async function shareFile(file) {
+  try {
+    if (!file || !fs.existsSync(file)) return { ok: false, msg: 'الملف مو موجود' };
+    const dir = sharedDir(); fs.mkdirSync(dir, { recursive: true });
+    const to = path.join(dir, path.basename(file));
+    if (fs.existsSync(to) && fs.statSync(to).size === fs.statSync(file).size) return { ok: true, already: true };
+    let free = Infinity; try { const f = fs.statfsSync(dir); free = f.bavail * f.bsize; } catch {}
+    if (fs.statSync(file).size > free - 512 * 1048576) return { ok: false, msg: 'المساحة ما تكفي في OneDrive' };
+    sharingNow.add(to); log('shared: copying', path.basename(file));
+    fs.promises.copyFile(file, to).then(() => { sharingNow.delete(to); log('shared: ready', path.basename(file)); try { remoteApi?.notifyPhone?.('☁️ جاهزة في OneDrive', path.basename(file)); } catch {} })
+      .catch((e) => { sharingNow.delete(to); log('shared copy failed', e.message); });
+    return { ok: true };
+  } catch (e) { log('share failed', e.message); return { ok: false }; }
+}
+function sharedList() {
+  const dir = sharedDir(); let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  return ents.filter((e) => e.isFile() && !/^desktop\.ini$|^~|\.tmp$/i.test(e.name)).map((e) => { const f = path.join(dir, e.name); let st = {}; try { st = fs.statSync(f); } catch {} return { file: f, name: e.name, size: st.size || 0, at: st.mtimeMs || 0, video: VIDEO_EXT.test(e.name), up: sharingNow.has(f) }; }).sort((a, b) => b.at - a.at).slice(0, 200);
+}
+async function sharedDel(file) {
+  const dir = path.resolve(sharedDir()).toLowerCase();
+  if (!file || path.resolve(path.dirname(file)).toLowerCase() !== dir) return { ok: false }; // only files inside the shared folder
+  try { await fs.promises.unlink(file); log('shared: deleted', path.basename(file)); return { ok: true }; } catch (e) { return { ok: false, msg: e.message }; }
+}
+ipcMain.handle('shared:add', (_e, file) => shareFile(file));
+ipcMain.handle('shared:open', () => { fs.mkdirSync(sharedDir(), { recursive: true }); return shell.openPath(sharedDir()); });
+
 // ---------- Screenshots & clips per game ----------
 const IMG_RE = /\.(png|jpe?g|webp|bmp)$/i, VID_RE = /\.(mp4|mkv|webm|mov)$/i;
 const normName = (s) => String(s || '').toLowerCase().replace(/[™®©]/g, '').replace(/[^a-z0-9؀-ۿ]/g, '');
@@ -2304,7 +2335,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, shareFile, sharedList, sharedDel, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;

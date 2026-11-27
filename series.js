@@ -98,6 +98,11 @@
     dlg.querySelector('[data-cont]')?.addEventListener('click', () => { dlg.close(); play(sh, sh.episodes.find((e) => e.file === last) || sh.episodes[0]); });
     dlg.querySelector('[data-first]')?.addEventListener('click', () => { dlg.close(); play(sh, sh.episodes[0]); });
     dlg.querySelectorAll('[data-ep]').forEach((b) => b.onclick = () => { dlg.close(); play(sh, sh.episodes[Number(b.dataset.ep)]); });
+    // right-click an episode: send it to the folder shared with the phone (OneDrive)
+    dlg.querySelectorAll('[data-ep]').forEach((b) => b.oncontextmenu = (e) => window.showCtx?.(e, [
+      { label: '☁️ حطها في المجلد المشترك (تطلع في جوالك)', run: async () => { const r = await pv.sharedAdd(sh.episodes[Number(b.dataset.ep)].file); toast(r?.ok ? (r.already ? 'موجودة هناك من قبل' : '☁️ تنسخ الحين، وتطلع في OneDrive بجوالك أول ما ترتفع') : (r?.msg || 'ما قدرت')); } },
+      { label: '📁 افتح المجلد المشترك', run: () => pv.sharedOpen() },
+    ]));
     dlg.showModal();
     dlg.querySelector('.ep.cur')?.scrollIntoView({ block: 'center' });
   }
