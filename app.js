@@ -3030,12 +3030,13 @@ pv.onUpdate(() => {
 async function drawRemote(r) {
   r ||= await pv.remoteInfo();
   $('#remoteOn').checked = !!r.on;
-  $('#remoteBox').innerHTML = r.on ? `<div class="share-body"><div class="qr">${r.qr || ''}</div><div><p class="hint">صوّره بكاميرا الجوال، أو افتح:</p><b dir="ltr" class="share-url">${esc(r.url || '')}</b><p class="hint">نصيحة: من الجوال اضغط "إضافة للشاشة الرئيسية" ويصير مثل تطبيق. ولو تغيّر عنوان الكمبيوتر، الصفحة نفسها تعرض لك الرابط الثابت (باسم جهازك) عشان ما تحتاج تصوّر من جديد.</p>${r.fixed ? `<p class="hint">الرابط الثابت: <b dir="ltr">${esc(r.fixed)}</b></p>` : ''}<button class="btn ghost sm" id="remoteNew">🔄 رابط جديد (يقفل القديم)</button></div></div>` : '';
-  $('#remoteNew')?.addEventListener('click', async () => drawRemote(await pv.remoteNewKey()));
+  $('#remoteBox').innerHTML = r.on ? `<div class="share-body"><div class="qr">${r.qr || ''}</div><div><p class="hint">صوّره بكاميرا الجوال، أو افتح:</p><b dir="ltr" class="share-url">${esc(r.url || '')}</b><p class="hint">نصيحة: من الجوال اضغط "إضافة للشاشة الرئيسية" ويصير مثل تطبيق. ولو تغيّر عنوان الكمبيوتر، الصفحة نفسها تعرض لك الرابط الثابت (باسم جهازك) عشان ما تحتاج تصوّر من جديد.</p>${r.fixed ? `<p class="hint">الرابط الثابت: <b dir="ltr">${esc(r.fixed)}</b></p>` : ''}<button class="btn ghost sm" id="remoteNew">🚫 اطرد كل الأجهزة (رابط جديد)</button></div></div>` : '';
+  $('#remoteNew')?.addEventListener('click', async () => { if (!confirm('كل جوال أو جهاز يتحكم الحين بينطرد، والرابط القديم يوقف. الرابط الجديد يوصلك في تنبيهات الجوال وتلقاه هنا. أكمّل؟')) return; drawRemote(await pv.remoteNewKey()); toast('🚫 انطردت كل الأجهزة، وهذا رابطك الجديد'); });
   $('#remoteNetOn').checked = !!r.net; $('#remoteNetOn').disabled = !r.on;
   $('#remoteNetBox').innerHTML = r.on && r.net ? `<div class="share-body"><div class="qr">${r.netQr || ''}</div><div><p class="hint">هذا الرابط يشتغل من أي مكان (البرنامج لازم يكون شغّال على الكمبيوتر). الصور والحلقات تفتح بس على شبكة البيت.</p><b dir="ltr" class="share-url">${esc(r.netUrl || '')}</b></div></div>` : '';
   remoteNet(r.on && r.net, r.key);
   drawNtfy(r);
+  try { drawDevs(r); } catch {}
 }
 $('#remoteNetOn').onchange = async () => { const r = await pv.remoteNet($('#remoteNetOn').checked); drawRemote(r); };
 // download finished → a note on the phone (free ntfy app, a secret topic made for this PC)
@@ -3044,6 +3045,12 @@ function drawNtfy(r) {
   c.checked = !!r.ntfyOn;
   box.innerHTML = r.ntfyOn && r.ntfy ? `<p class="hint">نزّل تطبيق <b>ntfy</b> (مجاني، آيفون وأندرويد)، اضغط <b>+</b> واكتب هالاسم بالضبط:</p><b dir="ltr" class="share-url">${esc(r.ntfy)}</b><p class="hint">أو افتح من الجوال: <span dir="ltr">ntfy.sh/${esc(r.ntfy)}</span>. وصلتك رسالة تجربة الحين. لا تعطي الاسم لأحد.</p>` : '';
 }
+// 🔒 the PIN the phone asks for before the PC controls
+const drawDevs = (r) => { const el = $('#remoteDevs'); if (!el) return; const ds = r?.devices || []; const ago = (x) => { const m = Math.round((Date.now() - x) / 60000); return m < 2 ? 'الحين' : m < 60 ? `قبل ${m} دقيقة` : m < 1440 ? `قبل ${Math.round(m / 60)} ساعة` : new Date(x).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn'); };
+  el.innerHTML = ds.length ? `<p class="hint">📱 الأجهزة اللي استخدمت الرابط (🏠 من البيت، 🌍 من برا):</p>${ds.map((d) => `<div class="hint">${d.via === 'wifi' ? '🏠' : '🌍'} <b dir="auto">${esc(d.name)}</b> — آخر مرة ${ago(d.last)}</div>`).join('')}` : ''; };
+const drawPin = (r) => { const el = $('#remotePinState'); drawDevs(r); if (el) el.textContent = r?.pinSet ? '✓ فيه رمز محفوظ. اكتب رمز جديد وتغيّره، أو خلها فاضية واحفظ عشان تشيله.' : '⚠ ما فيه رمز، فالتحكم من الجوال مقفول لين تحط واحد.'; };
+pv.remoteInfo?.().then(drawPin).catch(() => {});
+$('#remotePinGo') && ($('#remotePinGo').onclick = async () => { const r = await pv.remotePin?.($('#remotePin').value.trim()); if (r?.error) { toast(r.error); return; } $('#remotePin').value = ''; drawPin(r); toast(r?.pinSet ? '🔒 انحفظ الرمز' : 'انشال الرمز'); });
 $('#remoteNtfy') && ($('#remoteNtfy').onchange = async () => { const r = await pv.remoteNtfy?.($('#remoteNtfy').checked); if (r) drawNtfy(r); });
 // "from anywhere": the phone talks through a free relay; the app here answers it (same key as the Wi-Fi link)
 let rnet = null;
@@ -3142,6 +3149,8 @@ pv.torShareGet().then((d) => { torShareDir = d || ''; }).catch(() => {});
 pv.onTorShare((f) => addToTorLib(f, false, true));
 
 $('#setLang').onchange = () => window.I18n?.set($('#setLang').value);
+$('#setPlayLimit') && ($('#setPlayLimit').onchange = async () => { await pv.playLimit?.(Number($('#setPlayLimit').value)); toast('⏱ انحفظ'); });
+pv.playInfo?.().then((p) => { if (p && $('#setPlayLimit')) $('#setPlayLimit').value = String(p.limit || 0); }).catch(() => {});
 
 // ---------- 📁 Shared folder tidies itself: an episode goes once you've watched it (on the PC or the phone page), or after two weeks ----------
 async function tidyShared() {

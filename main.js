@@ -1678,6 +1678,7 @@ async function pcAction(act) {
   const run = (f, a) => new Promise((r) => execFile(f, a, { windowsHide: true, timeout: 15000 }, (err) => r(!err)));
   log('phone pc:', act);
   if (act === 'lock') return { ok: await run('rundll32.exe', ['user32.dll,LockWorkStation']), msg: '🔒 قفلت الشاشة' };
+  if (act === 'monoff' || act === 'monon') { const p = await inputHelper(); if (!p) return { ok: false, msg: 'ما قدرت' }; try { p.stdin.write(act + '\n'); } catch { return { ok: false }; } return { ok: true, msg: act === 'monoff' ? '🌑 طفيت الشاشة' : '💡 شغّلت الشاشة' }; }
   if (act === 'sleep') { setTimeout(() => run('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.Application]::SetSuspendState([System.Windows.Forms.PowerState]::Suspend, $false, $false)']), 3000); return { ok: true, msg: '😴 بيدخل سكون' }; }
   if (act === 'shutdown') { const ok = await run('shutdown', ['/s', '/t', '60', '/c', 'Silver Bullet: shutting down from your phone']); if (ok) shutAt = Date.now() + 60000; return { ok, msg: ok ? '⏻ بينطفي بعد دقيقة' : 'ما قدرت أطفيه' }; }
   if (act === 'cancel') { const ok = await run('shutdown', ['/a']); shutAt = 0; return { ok: true, msg: ok ? '↩ ألغيت الإطفاء' : 'ما كان فيه إطفاء' }; }
@@ -1688,6 +1689,76 @@ async function pcAction(act) {
   }
   return { ok: false };
 }
+// ---------- 👁 The PC screen on the phone, and the phone as mouse & keyboard ----------
+// The screen is a small JPEG taken only while the phone asks for it (nothing runs otherwise).
+// Input goes through a tiny helper (compiled once, like sbwatch) that starts the first time it's needed.
+let inputProc = null, realMouseAt = 0;
+async function inputHelper() {
+  if (inputProc && inputProc.exitCode === null && !inputProc.killed) return inputProc;
+  const exe = await helperExe('sbinput'); if (!exe) return null;
+  inputProc = spawn(exe, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+  inputProc.stdout.on('data', (d) => { if (String(d).includes('P')) realMouseAt = Date.now(); }); // someone is using the real mouse
+  inputProc.on('exit', () => { inputProc = null; });
+  inputProc.stdin.on('error', () => {});
+  log('input helper running');
+  return inputProc;
+}
+async function pcInput(c) {
+  const p = await inputHelper(); if (!p) return { ok: false, msg: 'ما قدرت أشغّل أداة التحكم' };
+  // whoever holds the real mouse wins: the phone waits until it has been still for 3 seconds
+  if (Date.now() - realMouseAt < 3000) return { ok: false, busy: true, msg: '🖱 أحد يستخدم الماوس في الجهاز الحين' };
+  const n = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
+  let line = '';
+  switch (c.a) {
+    case 'rel': line = `rel ${Math.round(n(c.x, -3000, 3000))} ${Math.round(n(c.y, -3000, 3000))}`; break;
+    case 'abs': line = `abs ${n(c.x, 0, 1).toFixed(4)} ${n(c.y, 0, 1).toFixed(4)}`; break;
+    case 'click': line = `click ${/^[lrm]$/.test(c.b || '') ? c.b : 'l'}`; break;
+    case 'dbl': line = 'dbl'; break;
+    case 'wheel': line = `wheel ${Math.round(n(c.n, -20, 20))}`; break;
+    case 'text': line = 'text ' + Buffer.from(String(c.t || '').slice(0, 500), 'utf8').toString('base64'); break;
+    case 'key': if (!/^[a-z0-9]+(\+[a-z0-9]+)*$/i.test(c.k || '')) return { ok: false }; line = 'key ' + c.k; break;
+    default: return { ok: false };
+  }
+  try { p.stdin.write(line + '\n'); return { ok: true }; } catch { return { ok: false }; }
+}
+async function screenFrame(w) {
+  inputHelper().catch(() => {}); // so the real mouse is noticed before the first tap
+  try {
+    const { desktopCapturer } = require('electron');
+    const d = screen.getPrimaryDisplay();
+    const W = Math.min(1280, Math.max(480, Number(w) || 960)), H = Math.round((W * d.size.height) / d.size.width);
+    const srcs = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: W, height: H } });
+    const s = srcs.find((x) => String(x.display_id) === String(d.id)) || srcs[0];
+    if (!s || s.thumbnail.isEmpty()) return { ok: false };
+    return { ok: true, d: 'data:image/jpeg;base64,' + s.thumbnail.toJPEG(55).toString('base64') };
+  } catch (e) { log('screen frame failed', e.message); return { ok: false }; }
+}
+
+// ---------- ⏱ Daily play-time reminder ----------
+// Counted here (the window sleeps during games): every minute a game is in front adds a minute.
+const playFile = () => path.join(app.getPath('userData'), 'play-today.json');
+let play = { day: '', min: 0, limit: 0, warnedAt: 0 };
+try { play = { ...play, ...JSON.parse(fs.readFileSync(playFile(), 'utf8')) }; } catch {}
+const savePlay = () => { try { fs.writeFileSync(playFile(), JSON.stringify(play)); } catch {} };
+const today = () => new Date().toLocaleDateString('en-CA');
+function playInfo() { if (play.day !== today()) { play.day = today(); play.min = 0; play.warnedAt = 0; } return { min: play.min, limit: play.limit }; }
+setInterval(() => {
+  playInfo();
+  if (!(gamesRunning > 0 || restState.game)) return;
+  play.min++; savePlay();
+  if (play.limit && play.min >= play.limit && (!play.warnedAt || play.min - play.warnedAt >= 30)) {
+    play.warnedAt = play.min; savePlay();
+    const h = (m) => (m >= 60 ? `${Math.floor(m / 60)} ساعة${m % 60 ? ` و${m % 60} دقيقة` : ''}` : `${m} دقيقة`);
+    const msg = `لعبت اليوم ${h(play.min)}، وحدّك ${h(play.limit)}. خذ راحة 🙂`;
+    log('play limit reached', play.min, '/', play.limit);
+    try { const { Notification } = require('electron'); new Notification({ title: '⏱ وقت اللعب', body: msg }).show(); } catch {}
+    try { remoteApi?.notifyPhone?.('⏱ وقت اللعب', msg); } catch {}
+  }
+}, 60000);
+function setPlayLimit(min) { play.limit = Math.max(0, Math.min(24 * 60, Math.round(Number(min) || 0))); play.warnedAt = 0; savePlay(); log('play limit set', play.limit); return playInfo(); }
+ipcMain.handle('play:info', () => playInfo());
+ipcMain.handle('play:limit', (_e, min) => setPlayLimit(min));
+
 // ---------- Rest ("سكون"): while a game or a full-screen video is in front, the app goes quiet ----------
 // A tiny helper (compiled once on this PC with Windows' own C# compiler, a few KB in memory) tells what is in front.
 // Only Spotify control keeps working; everything else waits, and memory is handed back.
@@ -1948,6 +2019,36 @@ async function restartSteam(root) {
 
 // What Steam is downloading right now (read from its own app manifests, which it updates as it goes)
 const steamTracked = new Map(); // appid -> { name, doneAt }
+let steamUpdates = [];
+// a game that has an update waiting: told once (on the phone too), not on every start
+const updTold = () => path.join(app.getPath('userData'), 'updates-told.json');
+function tellUpdates(list) {
+  let told = {}; try { told = JSON.parse(fs.readFileSync(updTold(), 'utf8')); } catch {}
+  const fresh = list.filter((u) => !told[u.id]);
+  for (const u of list) told[u.id] = told[u.id] || Date.now();
+  for (const id of Object.keys(told)) if (!list.some((u) => u.id === id)) delete told[id]; // updated: forget it
+  try { fs.writeFileSync(updTold(), JSON.stringify(told)); } catch {}
+  if (fresh.length) { log('steam updates waiting:', fresh.map((u) => u.name).join(', ')); try { remoteApi?.notifyPhone?.('🔄 تحديثات جديدة', fresh.map((u) => u.name).join('، ')); } catch {} }
+}
+// update now: Steam closed, the games marked "update first" (its own setting in each game's file), Steam opened again
+async function steamUpdateNow(ids) {
+  const root = steamRootCached || await steamRoot(); if (!root) return { ok: false, msg: 'ستيم مو مثبت' };
+  if (frontGame() || gamesRunning > 0) return { ok: false, msg: 'فيه لعبة شغّالة، سكّرها أول' };
+  const want = new Set((ids && ids.length ? ids : steamUpdates.map((u) => u.id)).map(String));
+  if (!want.size) return { ok: true, msg: 'ما فيه تحديثات' };
+  await steamStop(root);
+  const libs = new SteamLibs([root]);
+  const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
+  if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
+  let n = 0;
+  for (const l of libs) for (const id of want) {
+    const man = path.join(l, 'steamapps', `appmanifest_${id}.acf`); const t = readText(man); if (!t) continue;
+    try { fs.writeFileSync(man, t.replace(/("AutoUpdateBehavior"\s+")\d+(")/, '$12$2')); n++; const u = steamUpdates.find((x) => x.id === id); steamTracked.set(id, { name: u?.name || id, doneAt: 0 }); } catch (e) { log('update mark failed', id, e.message); }
+  }
+  steamPaused = false; steamStart(root);
+  log('steam update now', n, 'games');
+  return { ok: true, msg: `🔄 ستيم بيحدّث ${n} ${n === 1 ? 'لعبة' : 'ألعاب'} الحين` };
+}
 let steamPaused = false; // Steam closed from the phone to hold its downloads
 let steamDlList = [], steamRootCached = null;
 steamRoot().then((r) => { steamRootCached = r; });
@@ -1961,7 +2062,7 @@ function steamDlScan() {
   const libs = new SteamLibs([root]);
   const lf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
   if (lf) for (const v of Object.values(getCI(parseVdf(lf), 'libraryfolders') || {})) { const p = typeof v === 'object' ? getCI(v, 'path') : null; if (p) libs.add(p); }
-  const out = [], installed = [];
+  const out = [], installed = [], updates = [];
   for (const l of libs) {
     let files = []; try { files = fs.readdirSync(path.join(l, 'steamapps')).filter((f) => /^appmanifest_\d+\.acf$/i.test(f)); } catch { continue; }
     for (const f of files) {
@@ -1969,6 +2070,7 @@ function steamDlScan() {
       const id = String(getCI(a, 'appid') || ''), flags = Number(getCI(a, 'StateFlags') || 0);
       const total = Number(getCI(a, 'BytesToDownload') || 0), done = Number(getCI(a, 'BytesDownloaded') || 0);
       const tr = steamTracked.get(id);
+      if (flags & 4 && flags & 2 && !(flags & 1048576) && !tr) updates.push({ id, name: String(getCI(a, 'name') || id), size: total });
       if (flags === 4) { // fully installed
         installed.push(id);
         if (tr && !tr.doneAt) { tr.doneAt = Date.now(); log('steam download done', tr.name); try { remoteApi?.notifyPhone?.('✅ خلص التحميل', tr.name); } catch {} }
@@ -1985,6 +2087,7 @@ function steamDlScan() {
     }
   }
   steamDlList = out;
+  steamUpdates = updates; tellUpdates(updates);
   const sig = installed.sort().join(',');
   if (sig !== steamDlScan.sig) { steamDlScan.sig = sig; try { mainWin?.webContents.send('steam:installed', installed); } catch {} } // the app moves them out of "مكتبتي"
 }
@@ -2343,7 +2446,7 @@ app.whenReady().then(() => {
   try { require('./deals')({ ipcMain, app, net, log, shell, phoneNote: (t, m) => remoteApi?.notifyPhone?.(t, m) }); } catch (e) { log('deals setup failed', e.message); }
   ipcMain.handle('phone:note', (_e, t, m) => remoteApi?.notifyPhone?.(String(t).slice(0, 80), String(m).slice(0, 400)));
   // the phone page works even if the torrent part failed to start
-  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, shareFile, sharedList, sharedDel, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
+  try { remoteApi = require('./remote')({ ipcMain, app, net, log, wakeHelper, getWin: () => mainWin, mediaAsk, mediaKey: mediaKeyPress, setVolume: setAppVolume, torAdd: (w) => tor?.add?.(w) || { ok: false }, lanAddress, qrSvgOf, pcAction, pcInfo, steamInstall: steamRemoteInstall, steamDl: () => steamDlList, steamAct, steamUpdates: () => steamUpdates, steamUpdateNow, pcInput, screenFrame, playInfo, setPlayLimit, shareFile, sharedList, sharedDel, steamClear: () => { for (const [id, t] of steamTracked) if (t.doneAt) steamTracked.delete(id); steamDlList = steamDlList.filter((x) => x.st !== 'done'); } }); } catch (e) { log('phone remote failed', e.message); }
   unpackTools();
   // Block common ad / pop-up networks inside the in-app web tabs (movie sites are full of them)
   const AD_RE = /(^|\.)(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.[a-z.]+|popads\.net|popcash\.net|propellerads\.com|exoclick\.com|exosrv\.com|juicyads\.com|adsterra\.com|a-ads\.com|hilltopads\.net|adcash\.com|onclickads\.net|clickadu\.com|trafficjunky\.net|mgid\.com|revcontent\.com|taboola\.com|outbrain\.com|adnxs\.com|rubiconproject\.com|pubmatic\.com|criteo\.com|zedo\.com|yllix\.com|monetag\.com|highperformanceformat\.com|bidgear\.com)$/i;
