@@ -3074,11 +3074,12 @@ async function rtcAnswer(body) {
         ch.send(JSON.stringify({ t: 'info', size: info.size, name: info.name, mime: info.mime }));
         pv.log('phone: direct line, sending ' + info.name + ' ' + Math.round(info.size / 1048576) + 'MB');
         ch.bufferedAmountLowThreshold = 1 << 20;
-        const PIECE = 1 << 20, MSG = 64 * 1024;
-        for (let off = Math.max(0, Math.min(info.size, +q.off || 0)); off < info.size && ch.readyState === 'open'; off += PIECE) {
+        const PIECE = 512 * 1024, MSG = 64 * 1024;
+        for (let off = Math.max(0, Math.min(info.size, +q.off || 0)); off < info.size && ch.readyState === 'open';) {
           const r = await pv.remoteCall('cmd', { type: 'fileChunk', id: q.id, small: !!q.small, off, len: PIECE });
           if (!r?.ok) throw new Error('read');
           const bin = atob(r.d), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+          if (!u.length) throw new Error('short'); off += u.length; // move on by what was actually read (the reader hands back at most 512 KB)
           for (let o = 0; o < u.length; o += MSG) {
             if (ch.bufferedAmount > 8 << 20) await new Promise((res) => { ch.onbufferedamountlow = () => { ch.onbufferedamountlow = null; res(); }; });
             ch.send(u.subarray(o, o + MSG));
