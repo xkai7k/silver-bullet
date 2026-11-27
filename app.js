@@ -2786,6 +2786,8 @@ window.addEventListener('unhandledrejection', (e) => { if (/ERR_ABORTED|\(-3\)/.
       else if (k === 'hover') document.querySelectorAll('.tile[data-item]')[Number(v) || 0]?.dispatchEvent(new Event('mouseenter'));
       else if (k === 'drawer') openDrawer();
       else if (k === 'emuget') installEmulators();
+      else if (k === 'rmitem') { const n = decodeURIComponent(v || '').toLowerCase(); const hit = allItems().filter((i) => i.name.toLowerCase() === n); deleteItems(hit); render(); pushRemote(); pv.log('removed ' + hit.length + ' item(s) named ' + n); }
+      else if (k === 'hidevid') { const n = decodeURIComponent(v || '').toLowerCase(); const hit = remoteShows.filter((x) => x.name.toLowerCase().startsWith(n)); (data.hiddenShows ||= []).push(...hit.map((x) => x.dir)); save(); remoteShowsAt = 0; pushRemote(); pv.log('hid ' + hit.map((x) => x.dir).join(', ')); }
       else if (k === 'rnames') { const g = allItems().filter((i) => isGameItem(i) && !i.owned && !i.store), l = allItems().filter((i) => isGameItem(i) && i.owned); pv.log('phone games: ' + g.map((i) => i.name + ' <' + String(i.target || i.rom || '').slice(0, 60) + '>').join(' | ')); pv.log('phone lib: ' + l.map((i) => i.name + ' <' + String(i.target || '').slice(0, 40) + '>').join(' | ')); pv.videosLocal?.([]).then((v) => pv.log('phone videos: ' + (v || []).map((x) => x.name + ' <' + x.dir.slice(0, 70) + '> ' + x.episodes.length).join(' | '))); }
       else if (k === 'emuprep') pv.emuPrepare().then((c) => pv.log('emulators prepared, cores: ' + [].concat(c || []).join(',')));
       else if (k === 'importall') importAllGames();
@@ -3095,7 +3097,8 @@ async function pushRemote() {
     // plus what you downloaded (Downloads, Videos, the torrent folder), even without adding a folder
     let local = []; try { local = (await pv.videosLocal?.([...(w?.folders || []), ...mine.map((x) => x.dir)])) || []; } catch {}
     const seen = new Set(mine.map((x) => x.dir.toLowerCase()));
-    remoteShows = [...mine, ...local.filter((x) => !seen.has(x.dir.toLowerCase()))];
+    const hid = new Set((data.hiddenShows || []).map((d) => d.toLowerCase()));
+    remoteShows = [...mine, ...local.filter((x) => !seen.has(x.dir.toLowerCase()))].filter((x) => !hid.has(x.dir.toLowerCase()));
   }
   const shows = remoteShows.map((sh) => ({ dir: sh.dir, name: sh.name, poster: sh.poster || '', eps: sh.episodes.slice(0, 300).map((e) => { const p = Series.progOf(e.file); return { file: e.file, name: e.name.replace(/\.[^.]+$/, ''), t: p?.t || 0, d: p?.d || 0 }; }) }));
   // only real downloads: running now (the downloader saw it in the last 2 minutes), or finished/failed in the last day, and not cleared
@@ -3117,6 +3120,7 @@ pv.onRemote((c) => {
       toast(`📱 ${c.act === 'pause' ? '⏸ وقّفت' : c.act === 'resume' ? '▶ كمّلت' : '✕ لغيت'} ${t.title}`);
     });
   }
+  else if (c.type === 'hideShow' && c.dir) { (data.hiddenShows ||= []).push(String(c.dir)); save(); remoteShowsAt = 0; pushRemote(); pv.log('phone: hid ' + c.dir); }
   else if (c.type === 'dlClear') { // "🧹 نظّف الكل" on the phone: finished, failed and stuck ones leave the list (the games stay)
     let n = 0;
     for (const t of data.torLib || []) {

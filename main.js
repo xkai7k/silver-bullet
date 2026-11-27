@@ -1133,7 +1133,7 @@ ipcMain.handle('videos:local', (_e, skip) => {
           const eps = videosIn(d).filter((v) => v.size > 1 << 20 && !/^(intro|logo|splash|credits|trailer|attract|opening|movie\d*|cutscene)/i.test(v.name)).sort((a, b) => natural(a.file, b.file));
           if (eps.length) out.push({ name: e.name, dir: d, poster: posterIn(d), episodes: eps, at: Math.max(...eps.map((v) => { try { return fs.statSync(v.file).mtimeMs; } catch { return 0; } })) });
         } else if (e.isFile() && VIDEO_EXT.test(e.name) && !/sample/i.test(e.name)) {
-          const st = fs.statSync(d); if (st.size < 1 << 20) continue;
+          const st = fs.statSync(d); if (st.size < 50 << 20) continue; // a loose short clip isn't an episode or a film
           out.push({ name: e.name.replace(VIDEO_EXT, ''), dir: d, poster: '', episodes: [{ file: d, name: e.name, size: st.size }], movie: true, at: st.mtimeMs });
         }
       } catch {}
