@@ -74,10 +74,10 @@ function call(kind,body){if(!RELAY)return kind==='state'?fetch('/api/state?k='+K
 const cmd=(o)=>call('cmd',o).catch(()=>({ok:false}));
 document.querySelectorAll('.tabs button').forEach((b)=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach((x)=>x.classList.toggle('on',x===b));for(const s of ['games','watch','dl','shots','pc'])$('#'+s).hidden=s!==b.dataset.t;try{localStorage.setItem('sbtab',b.dataset.t)}catch{}});
 document.querySelectorAll('[data-g]').forEach((b)=>b.onclick=()=>{gt=b.dataset.g;document.querySelectorAll('[data-g]').forEach((x)=>x.classList.toggle('on',x===b));drawGames();});
-const tile=(g,extra)=>'<button class="g" style="--h:'+hue(g.name)+'" data-id="'+esc(g.id)+'" data-kind="'+(g.tor?'tor':'game')+'"><span class="ini">'+esc((g.name||'?')[0])+'</span>'+pimg(g.pic,g.web)+(extra?'<em>'+extra+'</em>':'')+'<span>'+esc(g.name)+'</span></button>';
+const tile=(g,extra)=>'<button class="g" style="--h:'+hue(g.name)+'" data-id="'+esc(g.id)+'" data-kind="'+(g.tor?'tor':g.owned?'own':'game')+'"><span class="ini">'+esc((g.name||'?')[0])+'</span>'+pimg(g.pic,g.web)+(extra?'<em>'+extra+'</em>':'')+'<span>'+esc(g.name)+'</span></button>';
 function drawGames(){const q=$('#q').value.trim().toLowerCase();const list=(gt==='inst'?S.games:S.lib).filter((g)=>!q||g.name.toLowerCase().includes(q));
 $('#grid').innerHTML=list.map((g)=>tile(g,g.tor?(g.state==='downloading'?Math.round(g.pct||0)+'%':g.state==='saved'?'🧲':''):g.owned?'📚':'')).join('')||'<p class="hint">'+t('none')+'</p>';
-document.querySelectorAll('#grid .g').forEach((b)=>b.onclick=async()=>{b.classList.add('go');const r=await cmd(b.dataset.kind==='tor'?{type:'torDl',id:b.dataset.id}:{type:'launch',id:b.dataset.id});toast(r.ok?(b.dataset.kind==='tor'?t('dlstart'):'▶ '+t('onpc')):t('fail'));setTimeout(()=>b.classList.remove('go'),1500)});}
+document.querySelectorAll('#grid .g').forEach((b)=>b.onclick=async()=>{b.classList.add('go');const k=b.dataset.kind;const r=await cmd(k==='tor'?{type:'torDl',id:b.dataset.id}:k==='own'?{type:'install',id:b.dataset.id}:{type:'launch',id:b.dataset.id});toast(r.msg||(r.ok?(k==='tor'?t('dlstart'):'▶ '+t('onpc')):t('fail')));setTimeout(()=>b.classList.remove('go'),1500)});}
 $('#q').oninput=drawGames;
 function drawWatch(){
  if(openShow){const sh=S.shows.find((x)=>x.dir===openShow);if(!sh){openShow=null;return drawWatch();}
