@@ -1294,6 +1294,22 @@ async function phoneSmall(file) {
   } catch { return file; }
 }
 
+// how long a clip's picture and sound really last (read straight from the packets, not the header)
+function streamSpan(ff, file, sel) {
+  return new Promise((r) => execFile(ff, ['-hide_banner', '-nostats', '-progress', 'pipe:1', '-i', file, '-map', sel, '-c', 'copy', '-f', 'null', '-'], { windowsHide: true, timeout: 120000, maxBuffer: 8e6 }, (_e, out) => {
+    const m = String(out || '').match(/out_time_us=(\d+)/g); r(m ? +m[m.length - 1].split('=')[1] / 1e6 : 0);
+  }));
+}
+// some recorders stamp the picture with the wrong clock, so the phone plays it in slow motion (or fast);
+// the sound keeps the true length, so the picture is stretched back to match it
+async function speedFix(ff, file) {
+  const [v, a] = await Promise.all([streamSpan(ff, file, '0:v:0'), streamSpan(ff, file, '0:a:0?')]);
+  if (!(v > 1 && a > 1)) return '';
+  const k = a / v;
+  if (Math.abs(1 - k) < 0.06 || k < 0.2 || k > 5) return '';
+  log('clip speed fix', path.basename(file), 'picture', v.toFixed(1) + 's', 'sound', a.toFixed(1) + 's', 'x' + (1 / k).toFixed(2));
+  return 'setpts=PTS*' + k.toFixed(6) + ',';
+}
 // game clips for the phone: recorders (Razer, Kairos…) save at a changing frame rate with jumps in the timing,
 // which the PC shrugs off but an iPhone plays as stutter and freezes. So the clip is rebuilt at a steady 60/30 fps,
 // fresh timestamps, one sound track kept in step — by the graphics card, a few seconds per clip.
@@ -1302,12 +1318,12 @@ async function phoneClip(file, small) {
   try {
     const st = fs.statSync(file); if (!VIDEO_EXT.test(file) || st.size > 4 * 1024 ** 3) return file;
     const dir = phoneCacheDir(); fs.mkdirSync(dir, { recursive: true });
-    const key = require('crypto').createHash('md5').update('steady5' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
+    const key = require('crypto').createHash('md5').update('steady6' + (small ? 's' : '') + file + st.mtimeMs).digest('hex').slice(0, 16);
     const out = path.join(dir, key + '.mp4');
     if (fs.existsSync(out)) return out;
     if (!steadyMaking.has(key)) steadyMaking.set(key, (async () => {
       const ff = await ffmpegExe(); if (!ff) return false;
-      const vf = (small ? 'scale=-2:min(720\\,ih),' : '') + 'fps=' + (small ? 30 : 60) + ',format=yuv420p';
+      const vf = (await speedFix(ff, file)) + (small ? 'scale=-2:min(720\\,ih),' : '') + 'fps=' + (small ? 30 : 60) + ',format=yuv420p';
       const snd = await soundArgs(ff, file, 'aresample=async=1000:first_pts=0');
       const base = ['-v', 'error', '-y', '-fflags', '+genpts+discardcorrupt', '-i', file, '-map', '0:v:0', ...(snd.fc ? ['-filter_complex', snd.fc, '-map', '[aout]'] : [...snd.map, '-af', snd.af]), '-vf', vf,
         '-c:a', 'aac', '-b:a', small ? '128k' : '192k', '-ar', '48000', '-ac', '2',
